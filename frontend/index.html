@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wails + SQLite</title>
+    <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+    <main class="card">
+        <p class="eyebrow">Wails + SQLite</p>
+        <h1>Товары</h1>
+
+        <form id="add-form">
+            <input type="text"   id="name"  placeholder="Название" required>
+            <input type="number" id="count" placeholder="Количество" required min="0">
+            <button type="submit">Добавить</button>
+        </form>
+
+        <div id="status" class="status">Загрузка...</div>
+
+        <table id="products">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Название</th>
+                    <th>Количество</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="products-body"></tbody>
+        </table>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
