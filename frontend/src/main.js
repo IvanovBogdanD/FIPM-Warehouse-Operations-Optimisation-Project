@@ -1,4 +1,13 @@
+// 1. Bootstrap CSS (база)
+import 'bootstrap/dist/css/bootstrap.min.css';
+// 2. AdminLTE CSS (поверх Bootstrap)
+import 'admin-lte/dist/css/adminlte.min.css';
+// 3. Наши стили (могут переопределить adminlte)
 import './style.css';
+
+// 4. JS: сначала Bootstrap, потом AdminLTE
+import 'bootstrap/dist/js/bootstrap.bundle.min.js';
+import 'admin-lte/dist/js/adminlte.min.js';
 import { GetAllProducts, AddProduct, DeleteProduct } from '../wailsjs/go/main/DBService';
 
 const form     = document.getElementById('add-form');
@@ -23,7 +32,7 @@ async function loadProducts() {
                 <td>${p.id}</td>
                 <td>${p.name}</td>
                 <td>${p.count}</td>
-                <td><button class="delete" data-id="${p.id}">Удалить</button></td>
+                <td><button class="btn btn-danger btn-sm delete" data-id="${p.id}">Удалить</button></td>
             `;
             tbody.appendChild(tr);
         });

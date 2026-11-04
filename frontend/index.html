@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,29 +7,41 @@
     <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
-    <main class="card">
-        <p class="eyebrow">Wails + SQLite</p>
-        <h1>Товары</h1>
+    <main class="container-xl mt-4">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Товары на складе</h3>
+            </div>
+            <div class="card-body">
+                <form id="add-form" class="row g-2 mb-4">
+                    <div class="col-md-5">
+                        <input type="text" id="name" class="form-control" placeholder="Название" required>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="number" id="count" class="form-control" placeholder="Количество" required min="0">
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-primary w-100">Добавить</button>
+                    </div>
+                </form>
 
-        <form id="add-form">
-            <input type="text"   id="name"  placeholder="Название" required>
-            <input type="number" id="count" placeholder="Количество" required min="0">
-            <button type="submit">Добавить</button>
-        </form>
+                <div id="status" class="mb-3 text-muted">Загрузка...</div>
 
-        <div id="status" class="status">Загрузка...</div>
-
-        <table id="products">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Название</th>
-                    <th>Количество</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody id="products-body"></tbody>
-        </table>
+                <div class="table-responsive">
+                    <table id="products" class="table table-vcenter table-striped card-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Название</th>
+                                <th>Количество</th>
+                                <th class="w-1"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="products-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </main>
 
     <script type="module" src="/src/main.js"></script>
