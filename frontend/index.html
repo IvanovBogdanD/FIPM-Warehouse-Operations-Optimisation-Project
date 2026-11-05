@@ -3,35 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wails + SQLite</title>
+    <title>СкладПро</title>
+    
+    <!-- Подключаем Bootstrap для красоты формы, пока нет AdminLTE -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    
     <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
-    <main class="card">
-        <p class="eyebrow">Wails + SQLite</p>
-        <h1>Товары</h1>
 
-        <form id="add-form">
-            <input type="text"   id="name"  placeholder="Название" required>
-            <input type="number" id="count" placeholder="Количество" required min="0">
-            <button type="submit">Добавить</button>
-        </form>
+    <!-- 1. СЮДА JavaScript ВСТАВИТ ФОРМУ ВХОДА/РЕГИСТРАЦИИ -->
+    <div id="auth-container"></div>
 
-        <div id="status" class="status">Загрузка...</div>
+    <!-- 2. ОСНОВНОЕ ПРИЛОЖЕНИЕ (СКРЫТО ПО УМОЛЧАНИЮ) -->
+    <div id="main-app" style="display: none;">
+        <main class="card">
+            <p class="eyebrow">Wails + SQLite</p>
+            <h1>Товары</h1>
 
-        <table id="products">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Название</th>
-                    <th>Количество</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody id="products-body"></tbody>
-        </table>
-    </main>
+            <form id="add-form">
+                <input type="text"   id="name"  placeholder="Название" required>
+                <input type="number" id="count" placeholder="Количество" required min="0">
+                <button type="submit">Добавить</button>
+            </form>
 
+            <div id="status" class="status">Загрузка...</div>
+
+            <table id="products">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Название</th>
+                        <th>Количество</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="products-body"></tbody>
+            </table>
+        </main>
+    </div>
+
+    <!-- 3. ПОДКЛЮЧАЕМ СКРИПТЫ (оба с type="module") -->
+    <script type="module" src="/src/auth.js"></script>
     <script type="module" src="/src/main.js"></script>
 </body>
 </html>

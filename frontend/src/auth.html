@@ -1,0 +1,266 @@
+<style>
+    /* Изолируем окно авторизации от глобального style.css */
+    .auth-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        display: flex;
+        background: #f4f6f9;
+        z-index: 9999;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+
+    /* Левая темная панель */
+    .auth-left {
+        flex: 1;
+        background: #1a1d20;
+        color: white;
+        padding: 40px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .auth-left h1 { color: #fff; font-size: 2.5rem; font-weight: bold; margin-bottom: 20px; }
+    .auth-left p { color: #a0a5aa; font-size: 1.1rem; }
+    .auth-left .copyright { color: #6c757d; font-size: 0.9rem; }
+
+    /* Правая панель */
+    .auth-right {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        background: #f4f6f9;
+        overflow-y: auto;
+    }
+
+    /* Контейнер формы */
+    .auth-form-container {
+        width: 100%;
+        max-width: 500px;
+        background: #ffffff;
+        padding: 40px;
+        border-radius: 8px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    .auth-form-container h2 {
+        margin-top: 0;
+        margin-bottom: 30px;
+        color: #212529;
+        text-align: center;
+        font-weight: bold;
+    }
+
+    /* Жестко сбрасываем стили формы (принудительно вертикально) */
+    .auth-form-container form {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 15px;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .form-row {
+        display: flex;
+        gap: 15px;
+    }
+
+    .form-row .form-group {
+        flex: 1;
+    }
+
+    .auth-form-container label {
+        margin-bottom: 5px;
+        font-size: 14px;
+        color: #495057;
+        font-weight: 500;
+    }
+
+    /* Белые поля ввода с черным текстом */
+    .auth-form-container input[type="text"],
+    .auth-form-container input[type="email"],
+    .auth-form-container input[type="password"] {
+        width: 100% !important;
+        padding: 12px !important;
+        border: 1px solid #ced4da !important;
+        border-radius: 4px !important;
+        background: #ffffff !important;
+        color: #212529 !important; /* Черный текст */
+        font-size: 16px !important;
+        box-sizing: border-box !important;
+    }
+
+    .auth-form-container button {
+        margin-top: 10px;
+        padding: 12px;
+        background: #0d6efd !important;
+        color: white !important;
+        border: none;
+        border-radius: 4px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        width: 100%;
+    }
+
+    /* Карточки ролей */
+    .roles-grid {
+        display: grid !important;
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 10px !important;
+        margin-top: 5px;
+    }
+
+    .role-card {
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        padding: 10px;
+        cursor: pointer;
+        text-align: center;
+        background: #fff;
+        transition: 0.2s;
+    }
+
+    .role-card input { display: none; }
+    
+    .role-card .role-title {
+        display: block;
+        font-weight: bold;
+        color: #212529;
+        font-size: 14px;
+        margin-bottom: 4px;
+    }
+
+    .role-card .role-desc {
+        display: block;
+        font-size: 11px;
+        color: #6c757d;
+        line-height: 1.2;
+    }
+
+    /* Подсветка выбранной карточки */
+    .role-card:has(input:checked) {
+        border-color: #0d6efd;
+        background-color: #f0f7ff;
+    }
+
+    .auth-link { color: #0d6efd; text-decoration: none; cursor: pointer; }
+    .auth-link:hover { text-decoration: underline; }
+    .text-center { text-align: center; }
+</style>
+
+<!-- ЭКРАН ВХОДА -->
+<div id="login-screen" class="auth-overlay">
+    <div class="auth-left">
+        <div><h2 style="font-weight: bold; margin: 0;">СкладПро</h2></div>
+        <div>
+            <h1>С возвращением!</h1>
+            <p>Войдите в систему, чтобы продолжить работу с товарами и заказами.</p>
+        </div>
+        <div class="copyright">© 2026 СкладПро - учебный проект ТРПО</div>
+    </div>
+
+    <div class="auth-right">
+        <div class="auth-form-container">
+            <h2>Вход</h2>
+            <form id="login-form">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="login-email" required placeholder="Введите ваш email">
+                </div>
+                <div class="form-group">
+                    <label>Пароль</label>
+                    <input type="password" id="login-password" required placeholder="Введите пароль">
+                </div>
+                <button type="submit">Войти</button>
+            </form>
+            <div id="login-error" style="color: red; margin-top: 15px; text-align: center; font-size: 14px; display: none;"></div>
+            <p class="text-center" style="margin-top: 20px; color: #6c757d; font-size: 14px;">
+                Нет аккаунта? <a class="auth-link" id="link-to-register">Зарегистрироваться</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- ЭКРАН РЕГИСТРАЦИИ (скрыт по умолчанию) -->
+<div id="register-screen" class="auth-overlay" style="display: none;">
+    <div class="auth-left">
+        <div><h2 style="font-weight: bold; margin: 0;">СкладПро</h2></div>
+        <div>
+            <h1>Создайте учётную запись</h1>
+            <p>После регистрации администратор подтвердит роль, и вы получите доступ к нужным разделам.</p>
+        </div>
+        <div class="copyright">© 2026 СкладПро - учебный проект ТРПО</div>
+    </div>
+
+    <div class="auth-right">
+        <div class="auth-form-container">
+            <h2>Регистрация</h2>
+            <form id="register-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Фамилия</label>
+                        <input type="text" id="reg-lastname" required placeholder="Петрова">
+                    </div>
+                    <div class="form-group">
+                        <label>Имя</label>
+                        <input type="text" id="reg-firstname" required placeholder="Анна">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Отчество</label>
+                    <input type="text" id="reg-middlename" placeholder="Сергеевна">
+                </div>
+                
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="reg-email" required placeholder="petrova@mail.ru">
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Пароль</label>
+                        <input type="password" id="reg-password" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Повтор пароля</label>
+                        <input type="password" id="reg-password-confirm" required>
+                    </div>
+                </div>
+                
+                <div class="form-group" style="margin-top: 10px;">
+                    <label>Запрашиваемая роль</label>
+                    <div class="roles-grid">
+                        <label class="role-card">
+                            <input type="radio" name="reg-role" value="Кладовщик" checked>
+                            <span class="role-title">Кладовщик</span>
+                            <span class="role-desc">Карточка товара и место</span>
+                        </label>
+                        <label class="role-card">
+                            <input type="radio" name="reg-role" value="Менеджер">
+                            <span class="role-title">Менеджер</span>
+                            <span class="role-desc">Начальник отдела</span>
+                        </label>
+                        <label class="role-card">
+                            <input type="radio" name="reg-role" value="Администратор">
+                            <span class="role-title">Администратор</span>
+                            <span class="role-desc">Пользователи и права</span>
+                        </label>
+                    </div>
+                </div>
+
+                <button type="submit">Зарегистрироваться</button>
+            </form>
+            <div id="register-error" style="color: red; margin-top: 15px; text-align: center; font-size: 14px; display: none;"></div>
+            <p class="text-center" style="margin-top: 20px; color: #6c757d; font-size: 14px;">
+                Уже есть аккаунт? <a class="auth-link" id="link-to-login">Войти</a>
+            </p>
+        </div>
+    </div>
+</div>

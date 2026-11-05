@@ -19,7 +19,10 @@ func main() {
 	if err != nil {
 		log.Fatal("Не удалось открыть БД:", err)
 	}
-
+	authService := NewAuthService(dbService.db)
+	if err := authService.InitSchema(); err != nil {
+		log.Fatal("Ошибка создания таблицы users: ", err)
+	}
 	// 2. Запускаем Wails
 	err = wails.Run(&options.App{
 		Title:     "Wails + SQLite",
@@ -36,7 +39,8 @@ func main() {
 
 		//  Регистрация сервиса в v2 — через Bind
 		Bind: []interface{}{
-			dbService,
+			dbService, //передаем в js созданные экземпляры
+			authService,
 		},
 
 		// Закрываем БД при выходе
