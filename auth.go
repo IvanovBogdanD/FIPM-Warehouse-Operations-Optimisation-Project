@@ -30,10 +30,21 @@ func (a *AuthService) InitSchema() error {
 			middle_name   TEXT,
 			email         TEXT NOT NULL UNIQUE,
 			password_hash TEXT NOT NULL,
-			role          TEXT NOT NULL DEFAULT 'Кладовщик'
+			role          TEXT NOT NULL DEFAULT 'Кладовщик',
+			is_approved   BOOLEAN NOT NULL DEFAULT 0  -- НОВАЯ КОЛОНКА (0 = false, 1 = true)
 		)
 	`)
 	return err
+}
+
+// UserResponse — структура, которую мы отдаем на фронтенд при успешном входе
+type UserResponse struct {
+	ID         int    `json:"id"`
+	LastName   string `json:"lastName"`
+	FirstName  string `json:"firstName"`
+	Email      string `json:"email"`
+	Role       string `json:"role"`
+	IsApproved bool   `json:"isApproved"`
 }
 
 type RegisterRequest struct {
@@ -68,26 +79,29 @@ func (a *AuthService) Register(req RegisterRequest) error {
 	return nil
 }
 
-// Login — проверяет имя и пароль. Возвращает true, если вход успешен.
-func (a *AuthService) Login(username, password string) (bool, error) {
-	var passwordHash string
+func (a *AuthService) Login(email, password string) (*UserResponse, error) {
+	var hash string
+	var user UserResponse
 
+	// 1. Ищем пользователя по email.
+	// Драйвер сам сконвертирует 1/0 в boolean для поля IsApproved.
+	//Метод Scan берёт полученную из базы строку и по очереди раскладывает значения в те переменные, которые мы ему передали. При этом порядок имеет значение
 	err := a.db.QueryRow(
-		`SELECT password_hash FROM users WHERE username = ?`, username,
-	).Scan(&passwordHash)
+		`SELECT id, last_name, first_name, role, password_hash, is_approved FROM users WHERE email = ?`, email,
+	).Scan(&user.ID, &user.LastName, &user.FirstName, &user.Role, &hash, &user.IsApproved)
 
 	if err == sql.ErrNoRows {
-		// Пользователь не найден — это не ошибка, просто неудачный вход.
-		return false, nil
+		return nil, errors.New("неверный email или пароль")
 	}
 	if err != nil {
-		return false, fmt.Errorf("поиск пользователя: %w", err)
+		return nil, fmt.Errorf("поиск пользователя: %w", err)
 	}
 
-	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) != nil {
-		// Пароль не совпал.
-		return false, nil
+	// 2. Проверяем пароль
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
+		return nil, errors.New("неверный email или пароль")
 	}
 
-	return true, nil
+	// 3. Возвращаем данные.
+	return &user, nil
 }
