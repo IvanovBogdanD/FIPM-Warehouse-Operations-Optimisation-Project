@@ -24,6 +24,10 @@ func main() {
 		log.Fatal("Ошибка создания таблицы users: ", err)
 	}
 	adminService := NewAdminService(dbService.db)
+	inventoryService := NewInventoryService(dbService.db)
+	if err := inventoryService.InitSchema(); err != nil {
+		log.Fatal("Failed to create inventory tables: ", err)
+	}
 	// 2. Запускаем Wails
 	err = wails.Run(&options.App{
 		Title:     "ФИПМ",
@@ -43,6 +47,7 @@ func main() {
 			dbService, //передаем в js созданные экземпляры
 			authService,
 			adminService,
+			inventoryService,
 		},
 
 		// Закрываем БД при выходе
