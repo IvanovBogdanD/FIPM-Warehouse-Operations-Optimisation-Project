@@ -1,0 +1,13 @@
+<section id="catalog-page" class="card" aria-label="Каталог">
+        <div class="card-header"><h2 class="card-title">Товары на складе</h2></div>
+        <div class="card-body">
+          <label class="form-label" for="search">Поиск по названию</label>
+          <input id="search" class="form-control mb-3" type="search" placeholder="Название или его часть">
+          <p class="text-body-secondary">Артикулы отсутствуют в существующей базе.</p>
+          <p id="catalog-status" role="status" aria-live="polite"></p>
+          <button id="reload-catalog" class="btn btn-outline-secondary mb-3">Обновить</button>
+          <div class="table-responsive"><table class="table table-striped align-middle">
+            <thead><tr><th>ID</th><th>Название</th><th>Количество</th><th>Карточка</th></tr></thead><tbody id="products-body"></tbody>
+          </table></div>
+        </div>
+      </section>
