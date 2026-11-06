@@ -37,7 +37,7 @@ function renderReceivingOrder() {
     const completed = receivingOrder.status === 'completed';
     byId('receiving-order-status').className = completed ? 'badge text-bg-success mb-3' : 'badge text-bg-primary mb-3';
     byId('receiving-order-status').textContent = completed ? 'Завершён' : 'Черновик';
-    byId('receiving-order-id').textContent = `Номер: ${receivingOrder.id}`;
+    byId('receiving-order-id').textContent = `Номер: ${receivingOrder.number}`;
     for (const [label, value] of [
         ['Товар', receivingOrder.product.name], ['Принимаемое количество', `${receivingOrder.quantity} шт.`],
         ['Ответственный', receivingOrder.responsible], ['Место хранения', receivingOrder.location],
@@ -111,6 +111,12 @@ function resetReceiving() {
     renderReceivingOrder();
     updateReceivingCount();
     updateReceivingControls();
+}
+
+export function forgetReceiving(id) {
+    if (receivingOrder?.id !== id) return;
+    resetReceiving();
+    showStatus(byId('receiving-status'), 'Черновик отменён. Остаток не изменён.');
 }
 
 async function createReceiving(event) {
