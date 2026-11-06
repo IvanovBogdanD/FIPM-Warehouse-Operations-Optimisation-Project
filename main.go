@@ -23,6 +23,7 @@ func main() {
 	if err := authService.InitSchema(); err != nil {
 		log.Fatal("Ошибка создания таблицы users: ", err)
 	}
+	adminService := NewAdminService(dbService.db)
 	// 2. Запускаем Wails
 	err = wails.Run(&options.App{
 		Title:     "ФИПМ",
@@ -41,6 +42,7 @@ func main() {
 		Bind: []interface{}{
 			dbService, //передаем в js созданные экземпляры
 			authService,
+			adminService,
 		},
 
 		// Закрываем БД при выходе

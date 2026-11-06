@@ -4,29 +4,51 @@
       <li class="nav-item">
         <button class="btn btn-outline-secondary border-0" data-lte-toggle="sidebar" aria-label="Боковое меню">{{list}}</button>
       </li>
-      <li class="nav-item"><span id="page-title" class="fw-semibold">Главная</span></li>
+      <li class="nav-item"><span id="page-title" class="fw-semibold fs-5">Главная</span></li>
     </ul>
-    <span class="badge text-bg-light border fw-normal">Локальный режим</span>
+    <div class="d-flex align-items-center gap-3">
+        <span class="badge text-bg-light border fw-normal">Локальный режим</span>
+        <button id="btn-logout" class="btn btn-sm btn-outline-danger">Выйти</button>
+    </div>
   </div>
 </header>
-<aside class="app-sidebar bg-dark shadow" data-bs-theme="dark">
+<aside class="app-sidebar bg-dark shadow d-flex flex-column" data-bs-theme="dark">
   <div class="sidebar-brand">
     <a class="brand-link gap-2" href="#home">
       <span class="d-inline-flex border border-2 border-light p-1" aria-hidden="true"><span class="bg-light p-1"></span></span>
       <span class="brand-text fw-semibold">ФИПМ</span>
     </a>
   </div>
-  <div class="sidebar-wrapper">
+  
+  <div class="sidebar-wrapper flex-grow-1">
     <nav id="navigation" aria-label="Основная навигация">
       <ul class="nav sidebar-menu flex-column" role="menu">
-        <li class="nav-item"><a class="nav-link" href="#home"><span class="nav-icon">{{house}}</span><p>Главная</p></a></li>
-        <li class="nav-item"><a class="nav-link" href="#products"><span class="nav-icon">{{grid}}</span><p>Товары</p></a></li>
-        <li class="nav-item"><a class="nav-link" href="#orders"><span class="nav-icon">{{list-ul}}</span><p>Заказы</p></a></li>
-        <li class="nav-item"><span class="nav-link disabled" aria-disabled="true"><span class="nav-icon">{{clipboard-check}}</span><p>Инвентаризация</p></span></li>
-        <li class="nav-header">АНАЛИТИКА</li>
-        <li class="nav-item"><span class="nav-link disabled" aria-disabled="true"><span class="nav-icon">{{bar-chart}}</span><p>Отчёты</p></span></li>
+        <li class="nav-item" id="nav-home"><a class="nav-link" href="#home"><span class="nav-icon">{{house}}</span><p>Главная</p></a></li>
+        <li class="nav-item" id="nav-products"><a class="nav-link" href="#products"><span class="nav-icon">{{grid}}</span><p>Товары</p></a></li>
+        <li class="nav-item" id="nav-orders"><a class="nav-link" href="#orders"><span class="nav-icon">{{list-ul}}</span><p>Заказы</p></a></li>
+        <li class="nav-item" id="nav-inventory"><a class="nav-link" href="#inventory"><span class="nav-icon">{{clipboard-check}}</span><p>Инвентаризация</p></a></li>
+        
+        <li class="nav-item d-none" id="nav-users"><a class="nav-link" href="#users"><span class="nav-icon">{{list}}</span><p>Пользователи</p></a></li>
+        
+        <li class="nav-header d-none" id="nav-analytics-header">АНАЛИТИКА</li>
+        <li class="nav-item d-none" id="nav-analytics"><span class="nav-link disabled" aria-disabled="true"><span class="nav-icon">{{bar-chart}}</span><p>Отчёты</p></span></li>
       </ul>
     </nav>
+  </div>
+
+  <!-- БЛОК ПОЛЬЗОВАТЕЛЯ ВНИЗУ -->
+  <div class="sidebar-footer p-3 border-top border-secondary border-opacity-25 mt-auto bg-black bg-opacity-25">
+      <div class="d-flex align-items-center gap-2">
+          <!-- Аватарка с инициалом -->
+          <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 36px; height: 36px;">
+              <span id="sidebar-user-initial" class="text-white fw-bold"></span>
+          </div>
+          <!-- Имя и роль -->
+          <div class="overflow-hidden">
+              <p id="sidebar-user-name" class="mb-0 text-white text-truncate fw-semibold" style="font-size: 0.85rem;"></p>
+              <p id="sidebar-user-role" class="mb-0 text-muted text-truncate" style="font-size: 0.75rem;"></p>
+          </div>
+      </div>
   </div>
 </aside>
 <main id="main" class="app-main">

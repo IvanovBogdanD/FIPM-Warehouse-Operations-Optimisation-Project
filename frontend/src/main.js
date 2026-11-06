@@ -8,9 +8,15 @@ import { initHome } from './pages/home/home.js';
 import { initCatalog } from './pages/catalog/catalog.js';
 import { initRouter } from './app/router.js';
 import { initReceiving } from './pages/receiving/receiving.js';
+import { initAuth } from './pages/auth/auth.js';
+import { initUsers } from './pages/users/users.js';
+import { initInventory } from './pages/inventory/inventory.js';
 
 mountLayout();
 initHome();
 initCatalog();
 initReceiving();
+initAuth();
+initUsers();
+initInventory();
 initRouter();
