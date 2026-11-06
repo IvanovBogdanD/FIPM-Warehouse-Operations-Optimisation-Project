@@ -9,10 +9,12 @@ import { initCatalog } from './pages/catalog/catalog.js';
 import { initRouter } from './app/router.js';
 import { initReceiving } from './pages/receiving/receiving.js';
 import { initOrders } from './pages/orders/orders.js';
+import { initOrderForm } from './pages/order-form/order-form.js';
 
 mountLayout();
 initHome();
 initCatalog();
 initReceiving();
 initOrders();
+initOrderForm();
 initRouter();

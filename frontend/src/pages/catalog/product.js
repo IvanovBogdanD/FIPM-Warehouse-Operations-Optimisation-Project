@@ -9,8 +9,10 @@ export async function loadProduct(id) {
     byId('product-card').hidden = true;
     showStatus(byId('product-status'), 'Загрузка товара…');
     try {
-        const product = await callBackend('GetProduct', id);
+        const [product, stock] = await Promise.all([callBackend('GetProduct', id), callBackend('GetProductStock', id)]);
         if (request !== productRequest) return;
+        byId('product-free').textContent = String(stock.free);
+        byId('product-reserved').textContent = String(stock.reserved);
         for (const [label, value] of [['ID', product.id], ['Название', product.name], ['Количество', product.count]]) {
             const term = document.createElement('dt');
             const definition = document.createElement('dd');
