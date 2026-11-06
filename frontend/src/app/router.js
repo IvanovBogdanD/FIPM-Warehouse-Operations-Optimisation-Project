@@ -3,6 +3,7 @@ import { loadHome } from '../pages/home/home.js';
 import { loadProducts } from '../pages/catalog/catalog.js';
 import { loadProduct } from '../pages/catalog/product.js';
 import { loadReceiving } from '../pages/receiving/receiving.js';
+import { loadOrders } from '../pages/orders/orders.js';
 
 async function route() {
     const hash = location.hash.slice(1) || 'home';
@@ -27,6 +28,7 @@ async function route() {
     if (page === 'home') await loadHome();
     if (page === 'catalog') await loadProducts();
     if (page === 'product') await loadProduct(Number(productMatch[1]));
+    if (page === 'orders') await loadOrders();
     if (page === 'receiving') await loadReceiving();
 }
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const maxSafeCount int64 = 1<<53 - 1
@@ -20,12 +21,14 @@ type ReceivingRequest struct {
 }
 
 type ReceivingOrder struct {
-	ID          string  `json:"id"`
-	Product     Product `json:"product"`
-	Quantity    int64   `json:"quantity"`
-	Responsible string  `json:"responsible"`
-	Location    string  `json:"location"`
-	Status      string  `json:"status"`
+	ID          string    `json:"id"`
+	Number      string    `json:"number"`
+	Product     Product   `json:"product"`
+	Quantity    int64     `json:"quantity"`
+	Responsible string    `json:"responsible"`
+	Location    string    `json:"location"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 func (s *DBService) CreateReceiving(request ReceivingRequest) (ReceivingOrder, error) {
@@ -51,9 +54,10 @@ func (s *DBService) CreateReceiving(request ReceivingRequest) (ReceivingOrder, e
 	if _, err := rand.Read(token[:]); err != nil {
 		return ReceivingOrder{}, fmt.Errorf("создание номера приёмки: %w", err)
 	}
+	id := hex.EncodeToString(token[:])
 	order := ReceivingOrder{
-		ID: hex.EncodeToString(token[:]), Product: product, Quantity: int64(quantity),
-		Responsible: responsible, Location: location, Status: "pending",
+		ID: id, Number: "П-" + strings.ToUpper(id[:8]), Product: product, Quantity: int64(quantity),
+		Responsible: responsible, Location: location, Status: "pending", CreatedAt: time.Now(),
 	}
 	if s.receiving == nil {
 		s.receiving = make(map[string]ReceivingOrder)
@@ -110,13 +114,23 @@ func (s *DBService) CompleteReceiving(id string) (ReceivingOrder, error) {
 func (s *DBService) CancelReceiving(id string) error {
 	s.receivingMu.Lock()
 	defer s.receivingMu.Unlock()
+	_, err := s.cancelPendingReceiving(id)
+	return err
+}
+
+func (s *DBService) cancelPendingReceiving(id string) (ReceivingOrder, error) {
 	order, ok := s.receiving[id]
 	if !ok {
-		return errors.New("заказ приёмки не найден")
+		return ReceivingOrder{}, errors.New("заказ приёмки не найден")
 	}
 	if order.Status != "pending" {
-		return errors.New("завершённую приёмку отменить нельзя")
+		return ReceivingOrder{}, errors.New("завершённую приёмку отменить нельзя")
 	}
+	order.Status = "cancelled"
+	if s.cancelledReceiving == nil {
+		s.cancelledReceiving = make(map[string]ReceivingOrder)
+	}
+	s.cancelledReceiving[id] = order
 	delete(s.receiving, id)
-	return nil
+	return order, nil
 }
