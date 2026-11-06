@@ -1,0 +1,25 @@
+<section id="orders-page" aria-label="Заказы" hidden>
+  <div class="d-flex align-items-center justify-content-between gap-3 mb-4">
+    <h1 class="h3 fw-bold mb-0">Заказы</h1>
+    <div class="dropdown">
+      <button id="orders-actions" class="btn btn-outline-primary fs-4 lh-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Действия с заказами">
+        <span aria-hidden="true">…</span>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li>
+          <a id="orders-create-receiving" class="dropdown-item py-2" href="#orders/receiving">
+            <span class="d-block fw-semibold">Приёмка товара</span>
+            <small class="text-body-secondary">Создать заказ на поступление товара</small>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+  <div class="card shadow-none border">
+    <div class="card-header bg-body py-3"><h2 class="card-title fw-semibold">Заказы на приёмку</h2></div>
+    <div class="card-body">
+      <p>Чтобы создать заказ, откройте меню с тремя точками и выберите «Приёмка товара».</p>
+      <p class="text-body-secondary mb-0">После создания можно проверить данные, завершить приёмку или отменить черновик. Заказы доступны только до закрытия приложения.</p>
+    </div>
+  </div>
+</section>

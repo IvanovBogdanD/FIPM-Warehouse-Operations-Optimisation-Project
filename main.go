@@ -22,9 +22,9 @@ func main() {
 
 	// 2. Запускаем Wails
 	err = wails.Run(&options.App{
-		Title:     "Wails + SQLite",
-		Width:     760,
-		Height:    560,
+		Title:     "ФИПМ",
+		Width:     1320,
+		Height:    840,
 		MinWidth:  620,
 		MinHeight: 480,
 
@@ -32,9 +32,9 @@ func main() {
 			Assets: assets,
 		},
 
-		BackgroundColour: &options.RGBA{R: 18, G: 18, B: 22, A: 1},
+		BackgroundColour: &options.RGBA{R: 248, G: 249, B: 250, A: 1},
 
-		//  Регистрация сервиса в v2 — через Bind
+		// Регистрация сервиса через Bind
 		Bind: []interface{}{
 			dbService,
 		},
