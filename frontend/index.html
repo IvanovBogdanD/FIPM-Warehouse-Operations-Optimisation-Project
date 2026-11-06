@@ -1,106 +1,12 @@
 <!doctype html>
-<html lang="ru" data-bs-theme="dark">
+<html lang="ru" data-bs-theme="light">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>СкладПро</title>
-
-    <!-- Bootstrap (needed by AdminLTE) -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
-    <link rel="stylesheet" href="/src/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ФИПМ</title>
 </head>
-<body>
-
-    <!-- 1. AUTH SCREEN (auth.js injects the form here) -->
-    <div id="auth-container"></div>
-
-    <!-- 2. MAIN APP (hidden until login) -->
-    <div id="main-app" style="display: none;">
-        <!-- AdminLTE layout for the products table -->
-        <main class="container-xl mt-4">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h3 class="card-title mb-0">Товары на складе</h3>
-                    <!-- Shown only for admins (toggled by auth.js after login) -->
-                    <button id="btn-manage-users" type="button"
-                            class="btn btn-sm btn-outline-primary" style="display: none;">
-                        Управление пользователями
-                    </button>
-                </div>
-                <div class="card-body">
-                    <form id="add-form" class="row g-2 mb-4">
-                        <div class="col-md-5">
-                            <input type="text" id="name" class="form-control" placeholder="Название" required>
-                        </div>
-                        <div class="col-md-4">
-                            <input type="number" id="count" class="form-control" placeholder="Количество" required min="0">
-                        </div>
-                        <div class="col-md-3">
-                            <button type="submit" class="btn btn-primary w-100">Добавить</button>
-                        </div>
-                    </form>
-
-                    <div id="status" class="mb-3 text-muted">Загрузка...</div>
-
-                    <div class="table-responsive">
-                        <table id="products" class="table table-vcenter table-striped card-table">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Название</th>
-                                    <th>Количество</th>
-                                    <th class="w-1"></th>
-                                </tr>
-                            </thead>
-                            <tbody id="products-body"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </main>
-    </div>
-
-    <!-- 3. USERS MANAGEMENT MODAL (admin only) -->
-    <div class="modal fade" id="manage-users-modal" tabindex="-1"
-         aria-labelledby="manage-users-modal-label" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="manage-users-modal-label">Управление пользователями</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="manage-users-status" class="text-muted mb-3">Загрузка...</div>
-                    <div class="table-responsive">
-                        <table class="table table-vcenter table-striped">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>ФИО</th>
-                                    <th>Email</th>
-                                    <th>Роль</th>
-                                    <th>Статус</th>
-                                    <th class="w-1"></th>
-                                </tr>
-                            </thead>
-                            <!-- Rows will be rendered by auth.js -->
-                            <tbody id="manage-users-body"></tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 4. SCRIPTS -->
-    <!-- Bootstrap JS bundle (required for modals, dropdowns, etc.) -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-
-    <script type="module" src="/src/auth.js"></script>
-    <script type="module" src="/src/main.js"></script>
+<body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
+  <div id="app" class="app-wrapper"></div>
+  <script type="module" src="/src/main.js"></script>
 </body>
 </html>

@@ -1,0 +1,36 @@
+<header class="app-header navbar navbar-expand bg-body border-bottom">
+  <div class="container-fluid">
+    <ul class="navbar-nav align-items-center gap-3">
+      <li class="nav-item">
+        <button class="btn btn-outline-secondary border-0" data-lte-toggle="sidebar" aria-label="Боковое меню">{{list}}</button>
+      </li>
+      <li class="nav-item"><span id="page-title" class="fw-semibold">Главная</span></li>
+    </ul>
+    <span class="badge text-bg-light border fw-normal">Локальный режим</span>
+  </div>
+</header>
+<aside class="app-sidebar bg-dark shadow" data-bs-theme="dark">
+  <div class="sidebar-brand">
+    <a class="brand-link gap-2" href="#home">
+      <span class="d-inline-flex border border-2 border-light p-1" aria-hidden="true"><span class="bg-light p-1"></span></span>
+      <span class="brand-text fw-semibold">ФИПМ</span>
+    </a>
+  </div>
+  <div class="sidebar-wrapper">
+    <nav id="navigation" aria-label="Основная навигация">
+      <ul class="nav sidebar-menu flex-column" role="menu">
+        <li class="nav-item"><a class="nav-link" href="#home"><span class="nav-icon">{{house}}</span><p>Главная</p></a></li>
+        <li class="nav-item"><a class="nav-link" href="#products"><span class="nav-icon">{{grid}}</span><p>Товары</p></a></li>
+        <li class="nav-item"><a class="nav-link" href="#orders"><span class="nav-icon">{{list-ul}}</span><p>Заказы</p></a></li>
+        <li class="nav-item"><span class="nav-link disabled" aria-disabled="true"><span class="nav-icon">{{clipboard-check}}</span><p>Инвентаризация</p></span></li>
+        <li class="nav-header">АНАЛИТИКА</li>
+        <li class="nav-item"><span class="nav-link disabled" aria-disabled="true"><span class="nav-icon">{{bar-chart}}</span><p>Отчёты</p></span></li>
+      </ul>
+    </nav>
+  </div>
+</aside>
+<main id="main" class="app-main">
+  <div class="app-content pt-4 pb-4">
+    <div id="page-content" class="container-fluid"></div>
+  </div>
+</main>
