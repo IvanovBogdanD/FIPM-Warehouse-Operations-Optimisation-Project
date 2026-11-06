@@ -9,9 +9,10 @@ import (
 )
 
 type DBService struct {
-	db          *sql.DB
-	receivingMu sync.Mutex
-	receiving   map[string]ReceivingOrder
+	db                 *sql.DB
+	receivingMu        sync.Mutex
+	receiving          map[string]ReceivingOrder
+	cancelledReceiving map[string]ReceivingOrder
 }
 
 func NewDBService() (*DBService, error) {

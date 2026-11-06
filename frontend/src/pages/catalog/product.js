@@ -6,6 +6,7 @@ let productRequest = 0;
 export async function loadProduct(id) {
     const request = ++productRequest;
     byId('product-details').replaceChildren();
+    byId('product-card').hidden = true;
     showStatus(byId('product-status'), 'Загрузка товара…');
     try {
         const product = await callBackend('GetProduct', id);
@@ -19,6 +20,7 @@ export async function loadProduct(id) {
             definition.textContent = value;
             byId('product-details').append(term, definition);
         }
+        byId('product-card').hidden = false;
         showStatus(byId('product-status'), '');
     } catch (error) {
         if (request === productRequest) showError(byId('product-status'), error);

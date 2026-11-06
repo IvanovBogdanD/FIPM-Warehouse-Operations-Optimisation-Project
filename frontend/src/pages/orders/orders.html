@@ -1,25 +1,89 @@
 <section id="orders-page" aria-label="Заказы" hidden>
-  <div class="d-flex align-items-center justify-content-between gap-3 mb-4">
+  <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
     <h1 class="h3 fw-bold mb-0">Заказы</h1>
     <div class="dropdown">
-      <button id="orders-actions" class="btn btn-outline-primary fs-4 lh-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Действия с заказами">
+      <button id="orders-actions" class="btn btn-outline-primary fs-4 lh-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Создать заказ или приёмку">
         <span aria-hidden="true">…</span>
       </button>
       <ul class="dropdown-menu dropdown-menu-end">
         <li>
+          <span id="orders-create-order" class="dropdown-item disabled py-2" aria-disabled="true">
+            <span class="d-block fw-semibold">Создать заказ</span>
+            <small>Модуль в разработке</small>
+          </span>
+        </li>
+        <li>
           <a id="orders-create-receiving" class="dropdown-item py-2" href="#orders/receiving">
             <span class="d-block fw-semibold">Приёмка товара</span>
-            <small class="text-body-secondary">Создать заказ на поступление товара</small>
+            <small class="text-body-secondary">Поступление товара на склад</small>
           </a>
         </li>
       </ul>
     </div>
   </div>
-  <div class="card shadow-none border">
-    <div class="card-header bg-body py-3"><h2 class="card-title fw-semibold">Заказы на приёмку</h2></div>
-    <div class="card-body">
-      <p>Чтобы создать заказ, откройте меню с тремя точками и выберите «Приёмка товара».</p>
-      <p class="text-body-secondary mb-0">После создания можно проверить данные, завершить приёмку или отменить черновик. Заказы доступны только до закрытия приложения.</p>
+  <p class="alert alert-info">Заказы доступны только до закрытия приложения: в существующей базе нет таблицы заказов. Сейчас здесь видны заказы на приёмку, заказы на отгрузку появятся вместе с модулем их создания.</p>
+
+  <ul class="nav nav-tabs mb-3">
+    <li class="nav-item"><button id="orders-tab-all" class="nav-link active" type="button">Все <span id="orders-count-all" class="badge text-bg-light">0</span></button></li>
+    <li class="nav-item"><button id="orders-tab-pending" class="nav-link" type="button">Черновики <span id="orders-count-pending" class="badge text-bg-light">0</span></button></li>
+    <li class="nav-item"><button id="orders-tab-completed" class="nav-link" type="button">Завершённые <span id="orders-count-completed" class="badge text-bg-light">0</span></button></li>
+    <li class="nav-item"><button id="orders-tab-cancelled" class="nav-link" type="button">Отменённые <span id="orders-count-cancelled" class="badge text-bg-light">0</span></button></li>
+  </ul>
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    <input id="orders-search" class="form-control w-auto flex-grow-1" type="search" placeholder="Поиск по номеру, ответственному или товару" aria-label="Поиск заказов">
+    <button id="orders-reload" class="btn btn-outline-secondary" type="button">Обновить</button>
+  </div>
+  <p id="orders-status" role="status" aria-live="polite"></p>
+
+  <div class="row g-4 align-items-start">
+    <div class="col-xl-8">
+      <section class="card shadow-none border mb-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light"><tr><th scope="col">№ заказа</th><th scope="col">Статус</th><th scope="col">Создан</th><th scope="col">Отгрузка</th><th scope="col">Ответственный</th><th scope="col">Поз.</th><th scope="col"><span class="visually-hidden">Действия</span></th></tr></thead>
+            <tbody id="orders-body"></tbody>
+          </table>
+        </div>
+        <p id="orders-empty" class="text-center text-body-secondary py-5 mb-0" hidden></p>
+      </section>
+    </div>
+    <div class="col-xl-4">
+      <section class="card shadow-none border mb-0">
+        <div class="card-body">
+          <p id="order-details-empty" class="text-body-secondary mb-0">Выберите заказ в таблице, чтобы посмотреть его состав.</p>
+          <div id="order-details" hidden>
+            <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
+              <h2 id="order-title" class="h5 fw-semibold mb-0"></h2>
+              <span id="order-status-badge"></span>
+            </div>
+            <dl id="order-summary" class="mb-3"></dl>
+            <h3 class="h6 fw-semibold">Состав заказа</h3>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-2">
+                <thead class="table-light"><tr><th scope="col">Товар</th><th scope="col" class="text-end">Кол-во</th></tr></thead>
+                <tbody id="order-items"></tbody>
+              </table>
+            </div>
+            <p class="d-flex justify-content-between fw-semibold mb-3"><span id="order-positions"></span><span id="order-total"></span></p>
+            <button id="order-cancel" class="btn btn-outline-danger w-100" type="button" data-bs-toggle="modal" data-bs-target="#order-cancel-modal">Отменить заказ</button>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 </section>
+
+<div id="order-cancel-modal" class="modal fade" tabindex="-1" aria-labelledby="order-cancel-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="order-cancel-title" class="modal-title h5"></h2>
+      </div>
+      <div class="modal-body">Это черновик приёмки: остаток товара не изменится. Действие нельзя отменить.</div>
+      <div class="modal-footer">
+        <button id="order-cancel-back" class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Назад</button>
+        <button id="order-cancel-confirm" class="btn btn-danger" type="button" data-bs-dismiss="modal">Отменить заказ</button>
+      </div>
+    </div>
+  </div>
+</div>

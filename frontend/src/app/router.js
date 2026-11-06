@@ -3,8 +3,9 @@ import { loadHome } from '../pages/home/home.js';
 import { loadProducts } from '../pages/catalog/catalog.js';
 import { loadProduct } from '../pages/catalog/product.js';
 import { loadReceiving } from '../pages/receiving/receiving.js';
-import { loadUsers } from '../pages/users/users.js';
-
+import { loadOrders } from '../pages/orders/orders.js'; // Взяли из main
+import { loadUsers } from '../pages/users/users.js';    // Взяли из твоей ветки
+//функция ролей
 function updateMenuVisibility(role) {
     const menuItems = ['nav-home', 'nav-products', 'nav-orders', 'nav-inventory', 'nav-analytics', 'nav-analytics-header', 'nav-users'];
     menuItems.forEach(id => {
@@ -60,7 +61,6 @@ async function route() {
     if (userNameEl && userRoleEl && userInitialEl) {
         userNameEl.textContent = `${user.lastName} ${user.firstName}`;
         userRoleEl.textContent = user.role;
-        // Берем первую букву имени для аватарки
         const initial = (user.firstName && user.firstName.length > 0) ? user.firstName.charAt(0).toUpperCase() : '?';
         userInitialEl.textContent = initial;
     }
@@ -124,6 +124,7 @@ async function route() {
     if (page === 'home') await loadHome();
     if (page === 'catalog') await loadProducts();
     if (page === 'product') await loadProduct(Number(productMatch[1]));
+    if (page === 'orders') await loadOrders();
     if (page === 'receiving') await loadReceiving();
     if (page === 'users') await loadUsers();
 }

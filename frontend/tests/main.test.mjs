@@ -7,11 +7,11 @@ const templateFiles = ['index.html', 'src/layout/layout.html', 'src/pages/home/h
     'src/pages/catalog/catalog.html', 'src/pages/catalog/product.html', 'src/pages/orders/orders.html', 'src/pages/receiving/receiving.html'];
 const html = (await Promise.all(templateFiles.map((file) => readFile(new URL(`../${file}`, import.meta.url), 'utf8')))).join('\n');
 const moduleFiles = ['shared/api.js', 'shared/dom.js', 'shared/icons.js', 'layout/layout.js',
-    'pages/home/home.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'pages/receiving/receiving.js', 'app/router.js', 'main.js'];
+    'pages/home/home.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'pages/receiving/receiving.js', 'pages/orders/orders.js', 'app/router.js', 'main.js'];
 const scripts = [];
 for (const file of moduleFiles) {
     const url = new URL(`../src/${file}`, import.meta.url);
-    let source = await readFile(url, 'utf8');
+    let source = (await readFile(url, 'utf8')).replaceAll('\r\n', '\n');
     for (const match of source.matchAll(/^import (\w+) from '([^']+)\?raw';$/gm)) {
         const content = await readFile(new URL(match[2], url), 'utf8');
         source = source.replace(match[0], `const ${match[1]} = ${JSON.stringify(content)};`);
@@ -22,8 +22,13 @@ const main = scripts.join('\n');
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const product = (count = 10) => ({ id: 1, name: 'Молоко', count });
 const receipt = (count = 10, status = 'pending') => ({
-    id: 'test-order', product: product(count), quantity: 3, responsible: 'Иванов', location: 'Стеллаж 1', status,
+    id: 'test-order', number: 'П-TESTORDE', product: product(count), quantity: 3, responsible: 'Иванов', location: 'Стеллаж 1', status,
 });
+const order = (status = 'pending', changes = {}) => ({
+    id: 'test-order', number: 'П-TESTORDE', type: 'receiving', status, createdAt: '2026-10-14T10:42:00+03:00', shipmentDate: null,
+    responsible: 'Иванов', location: 'Стеллаж 1', items: [{ productId: 1, name: 'Молоко', quantity: 3 }], ...changes,
+});
+const rowText = (row) => row.children.map((cell) => cell.children[0]?.textContent ?? cell.textContent);
 
 function deferred() {
     let resolve, reject;
@@ -38,6 +43,7 @@ class Element {
         this.hidden = false;
         this.disabled = false;
         this.children = [];
+        this.dataset = {};
         this.listeners = new Map();
         this.classes = new Set();
         this.classList = {
@@ -55,7 +61,12 @@ class Element {
         for (const callback of this.listeners.get(name) || []) await callback({ preventDefault() {} });
     }
     dispatchEvent(event) { for (const callback of this.listeners.get(event.type) || []) callback(event); }
-    append(...children) { this.children.push(...children); }
+    append(...children) {
+        for (const child of children) {
+            if (typeof child === 'string') this.textContent += child;
+            else this.children.push(child);
+        }
+    }
     replaceChildren(...children) { this.children = children; }
     insertAdjacentHTML(position, content) {
         assert.equal(position, 'beforeend');
@@ -76,6 +87,7 @@ async function app(service = {}, hash = '#products') {
         GetProduct: async () => product(),
         CreateReceiving: async () => receipt(), GetReceiving: async () => receipt(),
         CompleteReceiving: async () => receipt(13, 'completed'), CancelReceiving: async () => {},
+        GetOrders: async () => [], CancelOrder: async () => order('cancelled'),
         ...service,
     } } };
     const location = { hash };
@@ -345,4 +357,296 @@ test('Приёмка открывается внутри заказов и со�
     assert.equal(ui.elements['receiving-fields'].disabled, true);
     await ui.elements['cancel-receiving'].fire('click');
     assert.equal(ui.elements['receiving-fields'].disabled, false);
+});
+
+test('Карточка скрывает поля без данных, если товар не загружен', async () => {
+    const ui = await app({ GetProduct: async (id) => { if (id === 999) throw new Error('товар не найден'); return product(); } });
+    await ui.navigate('#product/1');
+    assert.equal(ui.elements['product-card'].hidden, false);
+    await ui.navigate('#product/999');
+    assert.equal(ui.elements['product-card'].hidden, true);
+    assert.match(html, /Фото: нет данных/);
+    for (const field of ['Свободное количество', 'Количество в брони', 'Срок хранения (FIFO/LIFO)', 'Физические размеры',
+        'Поставщик/производитель', 'Размер в юнитах (SKU)', 'Идентификатор товарной позиции', 'Дата поступления на склад',
+        'Распределение по складам']) {
+        assert.ok(html.includes(`<dt class="mt-3">${field}</dt><dd>Нет данных</dd>`), field);
+    }
+});
+
+test('Меню заказов предлагает приёмку, а создание заказа отмечено как недоступное', () => {
+    assert.match(html, /id="orders-create-order" class="dropdown-item disabled py-2" aria-disabled="true">\s*<span class="d-block fw-semibold">Создать заказ<\/span>\s*<small>Модуль в разработке<\/small>/);
+    assert.match(html, /id="orders-create-receiving" class="dropdown-item py-2" href="#orders\/receiving">\s*<span class="d-block fw-semibold">Приёмка товара<\/span>/);
+    assert.match(html, /id="orders-actions"[^>]*data-bs-toggle="dropdown"/);
+});
+
+test('Окно отмены подключено к Bootstrap и лежит вне скрываемой секции', () => {
+    assert.match(html, /id="order-cancel"[^>]*data-bs-toggle="modal" data-bs-target="#order-cancel-modal"/);
+    assert.match(html, /id="order-cancel-confirm"[^>]*data-bs-dismiss="modal"/);
+    assert.match(html, /id="order-cancel-back"[^>]*data-bs-dismiss="modal"/);
+    assert.match(html, /<\/section>\s*<div id="order-cancel-modal" class="modal fade"/);
+});
+
+test('Заказы показывают статус, даты, ответственного и безопасно выводят данные', async () => {
+    const unsafe = '<img src=x onerror=alert(1)>';
+    const ui = await app({ GetOrders: async () => [
+        order('pending', { responsible: unsafe }),
+        order('completed', { id: 'done', number: 'П-DONE', shipmentDate: '2026-10-16T09:00:00+03:00' }),
+        order('cancelled', { id: 'gone', number: 'П-GONE' }),
+    ] }, '#orders');
+    assert.equal(ui.elements['orders-status'].textContent, '');
+    assert.equal(ui.elements['orders-empty'].hidden, true);
+    const [pending, completed, cancelled] = ui.elements['orders-body'].children;
+    const expectedCreated = new Date('2026-10-14T10:42:00+03:00').toLocaleString('ru-RU', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+    assert.deepEqual(rowText(pending).slice(0, 6), ['П-TESTORDE', 'Черновик', expectedCreated, '—', unsafe, '1']);
+    assert.equal(rowText(completed)[1], 'Завершён');
+    assert.notEqual(rowText(completed)[3], '—');
+    assert.equal(rowText(cancelled)[1], 'Отменён');
+    assert.equal(pending.children[6].children.length, 1);
+    assert.equal(completed.children[6].children.length, 0);
+    assert.equal(cancelled.children[6].children.length, 0);
+    assert.equal(pending.children[6].children[0]['data-bs-toggle'], 'modal');
+    assert.equal(pending.children[6].children[0]['data-bs-target'], '#order-cancel-modal');
+    assert.equal(ui.elements['orders-count-all'].textContent, '3');
+    assert.equal(ui.elements['orders-count-pending'].textContent, '1');
+});
+
+test('Неизвестные статус и тип показываются как есть и не ломают список', async () => {
+    const ui = await app({ GetOrders: async () => [order('shipped', { type: 'shipment' })] }, '#orders');
+    const row = ui.elements['orders-body'].children[0];
+    assert.equal(rowText(row)[1], 'shipped');
+    assert.equal(row.children[6].children.length, 0);
+    await row.fire('click');
+    assert.deepEqual(ui.elements['order-summary'].children.slice(0, 2).map((child) => child.textContent), ['Тип', 'shipment']);
+    assert.equal(ui.elements['order-cancel'].hidden, true);
+});
+
+test('Пока заказы загружаются, виден статус загрузки', async () => {
+    const slow = deferred();
+    const ui = await app({ GetOrders: () => slow.promise }, '#orders');
+    assert.match(ui.elements['orders-status'].textContent, /Загрузка заказов/);
+    slow.resolve([]);
+    await tick();
+    assert.equal(ui.elements['orders-status'].textContent, '');
+});
+
+test('Выбор заказа открывает состав, не пересоздавая строки таблицы', async () => {
+    const ui = await app({ GetOrders: async () => [order('completed'), order('pending', { id: 'second', number: 'П-SECOND' })] }, '#orders');
+    assert.equal(ui.elements['order-details-empty'].hidden, false);
+    assert.equal(ui.elements['order-details'].hidden, true);
+    const rows = [...ui.elements['orders-body'].children];
+    await rows[0].fire('click');
+    assert.equal(ui.elements['orders-body'].children[0], rows[0]);
+    assert.equal(ui.elements['orders-body'].children[1], rows[1]);
+    assert.equal(rows[0].classes.has('table-active'), true);
+    assert.equal(ui.elements['order-details'].hidden, false);
+    assert.equal(ui.elements['order-title'].textContent, 'Заказ П-TESTORDE');
+    assert.deepEqual(ui.elements['order-summary'].children.map((child) => child.textContent),
+        ['Тип', 'Приёмка товара', 'Дата создания', rowText(rows[0])[2], 'Дата отгрузки', '—', 'Ответственный', 'Иванов', 'Место хранения', 'Стеллаж 1']);
+    const item = ui.elements['order-items'].children[0];
+    assert.equal(item.children[0].children[0].textContent, 'Молоко');
+    assert.equal(item.children[0].children[0].href, '#product/1');
+    assert.equal(item.children[1].textContent, '3 шт.');
+    assert.equal(ui.elements['order-positions'].textContent, 'Итого позиций: 1');
+    assert.equal(ui.elements['order-total'].textContent, '3 шт.');
+    assert.equal(ui.elements['order-cancel'].hidden, true);
+    await rows[1].fire('click');
+    assert.equal(rows[0].classes.has('table-active'), false);
+    assert.equal(rows[1].classes.has('table-active'), true);
+    assert.equal(ui.elements['order-cancel'].hidden, false);
+});
+
+test('Пустой список и ошибка загрузки различаются, запрос можно повторить', async () => {
+    let failed = true;
+    const ui = await app({ GetOrders: async () => { if (failed) throw new Error('backend'); return []; } }, '#orders');
+    assert.match(ui.elements['orders-status'].textContent, /backend/);
+    assert.equal(ui.elements['orders-empty'].hidden, true);
+    failed = false;
+    await ui.elements['orders-reload'].fire('click');
+    assert.equal(ui.elements['orders-status'].classes.has('text-danger'), false);
+    assert.equal(ui.elements['orders-empty'].hidden, false);
+    assert.match(ui.elements['orders-empty'].textContent, /Заказов пока нет/);
+});
+
+test('Ошибка обновления убирает устаревший список и состав заказа', async () => {
+    let failed = false;
+    const ui = await app({ GetOrders: async () => { if (failed) throw new Error('backend'); return [order('pending')]; } }, '#orders');
+    await ui.elements['orders-body'].children[0].fire('click');
+    assert.equal(ui.elements['order-details'].hidden, false);
+    failed = true;
+    await ui.elements['orders-reload'].fire('click');
+    assert.match(ui.elements['orders-status'].textContent, /backend/);
+    assert.equal(ui.elements['orders-body'].children.length, 0);
+    assert.equal(ui.elements['orders-empty'].hidden, true);
+    assert.equal(ui.elements['order-details'].hidden, true);
+});
+
+test('Вкладки и поиск фильтруют заказы', async () => {
+    const ui = await app({ GetOrders: async () => [
+        order('pending', { id: 'a', number: 'П-AAA', responsible: 'Петрова' }),
+        order('completed', { id: 'b', number: 'П-BBB', items: [{ productId: 2, name: 'Хлеб', quantity: 1 }] }),
+        order('cancelled', { id: 'c', number: 'П-CCC' }),
+    ] }, '#orders');
+    const numbers = () => ui.elements['orders-body'].children.map((row) => rowText(row)[0]);
+    await ui.elements['orders-tab-cancelled'].fire('click');
+    assert.deepEqual(numbers(), ['П-CCC']);
+    assert.equal(ui.elements['orders-tab-cancelled'].classes.has('active'), true);
+    assert.equal(ui.elements['orders-tab-all'].classes.has('active'), false);
+    await ui.elements['orders-tab-all'].fire('click');
+    for (const [query, expected] of [['хлеб', ['П-BBB']], [' петрова ', ['П-AAA']], ['п-ccc', ['П-CCC']], ['нет такого', []]]) {
+        ui.elements['orders-search'].value = query;
+        await ui.elements['orders-search'].fire('input');
+        assert.deepEqual(numbers(), expected);
+    }
+    assert.match(ui.elements['orders-empty'].textContent, /не найдены/);
+    assert.equal(ui.elements['orders-empty'].hidden, false);
+});
+
+test('Отмена выполняется один раз после подтверждения и оставляет заказ в списке', async () => {
+    const cancellation = deferred();
+    const cancelled = [];
+    const ui = await app({
+        GetOrders: async () => [order('pending')],
+        CancelOrder: (id) => { cancelled.push(id); return cancellation.promise; },
+    }, '#orders');
+    await ui.elements['order-cancel-confirm'].fire('click');
+    assert.equal(cancelled.length, 0);
+    const row = ui.elements['orders-body'].children[0];
+    await row.fire('click');
+    await row.children[6].children[0].fire('click');
+    assert.equal(ui.elements['order-cancel-title'].textContent, 'Отменить заказ П-TESTORDE?');
+    const confirming = ui.elements['order-cancel-confirm'].fire('click');
+    await ui.elements['order-cancel-confirm'].fire('click');
+    assert.deepEqual(cancelled, ['test-order']);
+    assert.equal(ui.elements['orders-body'].children[0].children[6].children[0].disabled, true);
+    assert.equal(ui.elements['order-cancel'].disabled, true);
+    assert.match(ui.elements['orders-status'].textContent, /Отмена заказа/);
+    cancellation.resolve(order('cancelled'));
+    await confirming;
+    assert.equal(ui.elements['order-cancel'].disabled, false);
+    assert.match(ui.elements['orders-status'].textContent, /отменён. Остаток товара не изменён/);
+    const updated = ui.elements['orders-body'].children[0];
+    assert.equal(rowText(updated)[1], 'Отменён');
+    assert.equal(updated.children[6].children.length, 0);
+    assert.equal(ui.elements['order-cancel'].hidden, true);
+    assert.equal(ui.elements['orders-count-cancelled'].textContent, '1');
+});
+
+test('Кнопка в карточке заказа отменяет выбранный заказ', async () => {
+    const cancelled = [];
+    const ui = await app({
+        GetOrders: async () => [order('pending', { id: 'first', number: 'П-1' }), order('pending', { id: 'second', number: 'П-2' })],
+        CancelOrder: async (id) => { cancelled.push(id); return order('cancelled', { id, number: 'П-2' }); },
+    }, '#orders');
+    await ui.elements['orders-body'].children[1].fire('click');
+    await ui.elements['order-cancel'].fire('click');
+    assert.equal(ui.elements['order-cancel-title'].textContent, 'Отменить заказ П-2?');
+    await ui.elements['order-cancel-confirm'].fire('click');
+    assert.deepEqual(cancelled, ['second']);
+    assert.equal(rowText(ui.elements['orders-body'].children[0])[1], 'Черновик');
+    assert.equal(rowText(ui.elements['orders-body'].children[1])[1], 'Отменён');
+});
+
+test('Ошибка отмены видна, список сверяется с backend', async () => {
+    let current = order('pending');
+    const ui = await app({
+        GetOrders: async () => [current],
+        CancelOrder: async () => { current = order('completed'); throw new Error('завершённую приёмку отменить нельзя'); },
+    }, '#orders');
+    await ui.elements['orders-body'].children[0].children[6].children[0].fire('click');
+    await ui.elements['order-cancel-confirm'].fire('click');
+    assert.match(ui.elements['orders-status'].textContent, /завершённую приёмку отменить нельзя/);
+    assert.equal(ui.elements['orders-status'].classes.has('text-danger'), true);
+    assert.equal(rowText(ui.elements['orders-body'].children[0])[1], 'Завершён');
+    assert.equal(ui.elements['orders-body'].children[0].children[6].children.length, 0);
+});
+
+test('Отмена черновика из заказов освобождает форму приёмки', async () => {
+    const ui = await app({ GetOrders: async () => [order('pending')] });
+    await ui.draft();
+    assert.equal(ui.elements['receiving-fields'].disabled, true);
+    assert.equal(ui.elements['receiving-order-id'].textContent, 'Номер: П-TESTORDE');
+    await ui.navigate('#orders');
+    await ui.elements['orders-body'].children[0].children[6].children[0].fire('click');
+    await ui.elements['order-cancel-confirm'].fire('click');
+    await ui.navigate('#orders/receiving');
+    assert.equal(ui.elements['receiving-confirmation'].hidden, true);
+    assert.equal(ui.elements['receiving-fields'].disabled, false);
+    assert.doesNotMatch(ui.elements['receiving-status'].textContent, /Ошибка/);
+    assert.doesNotMatch(ui.elements['receiving-status'].textContent, /Проверьте черновик/);
+});
+
+test('Статус приёмки сообщает об отмене, если окно подтвердили поверх её страницы', async () => {
+    const ui = await app({ GetOrders: async () => [order('pending')] });
+    await ui.draft();
+    await ui.navigate('#orders');
+    await ui.elements['orders-body'].children[0].children[6].children[0].fire('click');
+    await ui.navigate('#orders/receiving');
+    await ui.elements['order-cancel-confirm'].fire('click');
+    assert.equal(ui.elements['receiving-status'].textContent, 'Черновик отменён. Остаток не изменён.');
+});
+
+test('Отмена другого заказа не трогает открытый черновик приёмки', async () => {
+    const ui = await app({
+        GetOrders: async () => [order('pending', { id: 'other', number: 'П-OTHER' })],
+        CancelOrder: async (id) => order('cancelled', { id, number: 'П-OTHER' }),
+    });
+    await ui.draft();
+    await ui.navigate('#orders');
+    await ui.elements['orders-body'].children[0].children[6].children[0].fire('click');
+    await ui.elements['order-cancel-confirm'].fire('click');
+    await ui.navigate('#orders/receiving');
+    assert.equal(ui.elements['receiving-confirmation'].hidden, false);
+    assert.equal(ui.elements['receiving-fields'].disabled, true);
+});
+
+test('Запоздавший список не возвращает отменённый заказ в черновики', async () => {
+    const slow = deferred();
+    let requests = 0;
+    const ui = await app({ GetOrders: () => ++requests === 2 ? slow.promise : Promise.resolve([order('pending')]) }, '#orders');
+    const cancel = ui.elements['orders-body'].children[0].children[6].children[0];
+    const reloading = ui.elements['orders-reload'].fire('click');
+    await cancel.fire('click');
+    await ui.elements['order-cancel-confirm'].fire('click');
+    slow.resolve([order('pending')]);
+    await reloading;
+    assert.equal(rowText(ui.elements['orders-body'].children[0])[1], 'Отменён');
+    assert.match(ui.elements['orders-status'].textContent, /отменён/);
+});
+
+test('Запоздавшая ошибка не очищает загруженный список заказов', async () => {
+    const slow = deferred();
+    let requests = 0;
+    const ui = await app({ GetOrders: () => ++requests === 1 ? slow.promise : Promise.resolve([order('completed')]) }, '#orders');
+    await ui.elements['orders-reload'].fire('click');
+    slow.reject(new Error('backend'));
+    await tick();
+    assert.equal(ui.elements['orders-body'].children.length, 1);
+    assert.equal(ui.elements['orders-status'].classes.has('text-danger'), false);
+});
+
+test('Запоздалый ответ не подменяет обновлённый список заказов', async () => {
+    const slow = deferred();
+    let requests = 0;
+    const ui = await app({ GetOrders: () => ++requests === 1 ? slow.promise : Promise.resolve([order('completed')]) }, '#orders');
+    await ui.elements['orders-reload'].fire('click');
+    slow.resolve([order('pending')]);
+    await tick();
+    assert.equal(rowText(ui.elements['orders-body'].children[0])[1], 'Завершён');
+});
+
+test('Завершение приёмки обновляет открытую вкладку заказов', async () => {
+    const completion = deferred();
+    let current = order('pending');
+    const ui = await app({ GetOrders: async () => [current], CompleteReceiving: () => completion.promise });
+    await ui.draft();
+    const finishing = ui.elements['complete-receiving'].fire('click');
+    await ui.navigate('#orders');
+    assert.equal(rowText(ui.elements['orders-body'].children[0])[1], 'Черновик');
+    current = order('completed');
+    completion.resolve(receipt(13, 'completed'));
+    await finishing;
+    await tick();
+    assert.equal(rowText(ui.elements['orders-body'].children[0])[1], 'Завершён');
 });
