@@ -32,8 +32,8 @@ type ReceivingOrder struct {
 }
 
 func (s *DBService) CreateReceiving(request ReceivingRequest) (ReceivingOrder, error) {
-	s.receivingMu.Lock()
-	defer s.receivingMu.Unlock()
+	s.ordersMu.Lock()
+	defer s.ordersMu.Unlock()
 	responsible := strings.TrimSpace(request.Responsible)
 	location := strings.TrimSpace(request.Location)
 	if responsible == "" || location == "" {
@@ -67,8 +67,8 @@ func (s *DBService) CreateReceiving(request ReceivingRequest) (ReceivingOrder, e
 }
 
 func (s *DBService) GetReceiving(id string) (ReceivingOrder, error) {
-	s.receivingMu.Lock()
-	defer s.receivingMu.Unlock()
+	s.ordersMu.Lock()
+	defer s.ordersMu.Unlock()
 	order, ok := s.receiving[id]
 	if !ok {
 		return ReceivingOrder{}, errors.New("заказ приёмки не найден: после перезапуска черновики недоступны")
@@ -78,8 +78,8 @@ func (s *DBService) GetReceiving(id string) (ReceivingOrder, error) {
 
 // Блокировка защищает черновик, а условный UPDATE проверяет остаток в момент записи.
 func (s *DBService) CompleteReceiving(id string) (ReceivingOrder, error) {
-	s.receivingMu.Lock()
-	defer s.receivingMu.Unlock()
+	s.ordersMu.Lock()
+	defer s.ordersMu.Unlock()
 	order, ok := s.receiving[id]
 	if !ok {
 		return ReceivingOrder{}, errors.New("заказ приёмки не найден: после перезапуска черновики недоступны")
@@ -112,8 +112,8 @@ func (s *DBService) CompleteReceiving(id string) (ReceivingOrder, error) {
 }
 
 func (s *DBService) CancelReceiving(id string) error {
-	s.receivingMu.Lock()
-	defer s.receivingMu.Unlock()
+	s.ordersMu.Lock()
+	defer s.ordersMu.Unlock()
 	_, err := s.cancelPendingReceiving(id)
 	return err
 }
