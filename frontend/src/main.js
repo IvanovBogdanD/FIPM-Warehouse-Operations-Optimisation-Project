@@ -1,79 +1,86 @@
-// 1. Bootstrap CSS (база)
 import 'bootstrap/dist/css/bootstrap.min.css';
-// 2. AdminLTE CSS (поверх Bootstrap)
 import 'admin-lte/dist/css/adminlte.min.css';
-// 3. Наши стили (могут переопределить adminlte)
 import './style.css';
-
-// 4. JS: сначала Bootstrap, потом AdminLTE
 import 'bootstrap/dist/js/bootstrap.bundle.min.js';
-import 'admin-lte/dist/js/adminlte.min.js';
-import { GetAllProducts, AddProduct, DeleteProduct } from '../wailsjs/go/main/DBService';
+import 'admin-lte';
+import { callBackend } from './api.js';
 
-const form     = document.getElementById('add-form');
-const tbody    = document.getElementById('products-body');
-const statusEl = document.getElementById('status');
+const byId = (id) => document.getElementById(id);
+let catalogRequest = 0;
+let routeRequest = 0;
 
-// ---------- Загрузка списка ----------
+function showError(element, error) {
+    element.classList.add('text-danger');
+    element.textContent = `Ошибка: ${error?.message || String(error)}`;
+}
+
+function showStatus(element, message) {
+    element.classList.remove('text-danger');
+    element.textContent = message;
+}
+
 async function loadProducts() {
+    const request = ++catalogRequest;
+    const status = byId('catalog-status');
+    showStatus(status, 'Загрузка товаров…');
+    byId('products-body').replaceChildren();
     try {
-        const products = await GetAllProducts();
-        tbody.innerHTML = '';
-
-        if (!products || products.length === 0) {
-            statusEl.textContent = 'Товаров пока нет';
-            return;
-        }
-        statusEl.textContent = `Всего товаров: ${products.length}`;
-
-        products.forEach(p => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${p.id}</td>
-                <td>${p.name}</td>
-                <td>${p.count}</td>
-                <td><button class="btn btn-danger btn-sm delete" data-id="${p.id}">Удалить</button></td>
-            `;
-            tbody.appendChild(tr);
+        const products = await callBackend('SearchProducts', byId('search').value);
+        if (request !== catalogRequest) return;
+        const rows = products.map((product) => {
+            const row = document.createElement('tr');
+            for (const value of [product.id, product.name, product.count]) {
+                const cell = document.createElement('td');
+                cell.textContent = value;
+                row.append(cell);
+            }
+            const cell = document.createElement('td');
+            const link = document.createElement('a');
+            link.href = `#product/${product.id}`;
+            link.textContent = 'Открыть';
+            cell.append(link);
+            row.append(cell);
+            return row;
         });
-    } catch (err) {
-        console.error(err);
-        statusEl.textContent = 'Ошибка загрузки: ' + err;
+        byId('products-body').replaceChildren(...rows);
+        showStatus(status, products.length ? `Найдено товаров: ${products.length}` : 'Товары не найдены.');
+    } catch (error) {
+        if (request === catalogRequest) showError(status, error);
     }
 }
 
-// ---------- Добавление ----------
-form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const product = {
-        name:  document.getElementById('name').value,
-        count: parseInt(document.getElementById('count').value),
-    };
-
-    try {
-        await AddProduct(product);
-        form.reset();
-        await loadProducts();
-    } catch (err) {
-        console.error(err);
-        statusEl.textContent = 'Ошибка добавления: ' + err;
+async function route() {
+    const request = ++routeRequest;
+    const hash = location.hash.slice(1) || 'products';
+    const productMatch = /^product\/(\d+)$/.exec(hash);
+    const page = productMatch ? 'product' : 'catalog';
+    for (const name of ['catalog', 'product']) byId(`${name}-page`).hidden = page !== name;
+    byId('page-title').textContent = { catalog: 'Товары', product: 'Карточка товара' }[page];
+    document.querySelectorAll('.sidebar-menu .nav-link').forEach((link) => {
+        link.classList.toggle('active', link.hash === '#products');
+    });
+    if (page === 'catalog') await loadProducts();
+    if (page === 'product') {
+        byId('product-details').replaceChildren();
+        showStatus(byId('product-status'), 'Загрузка товара…');
+        try {
+            const product = await callBackend('GetProduct', Number(productMatch[1]));
+            if (request !== routeRequest) return;
+            for (const [label, value] of [['ID', product.id], ['Название', product.name], ['Количество', product.count]]) {
+                const term = document.createElement('dt');
+                const definition = document.createElement('dd');
+                term.textContent = label;
+                definition.textContent = value;
+                byId('product-details').append(term, definition);
+            }
+            showStatus(byId('product-status'), '');
+        } catch (error) {
+            if (request === routeRequest) showError(byId('product-status'), error);
+        }
     }
-});
+}
 
-// ---------- Удаление ----------
-tbody.addEventListener('click', async (e) => {
-    if (!e.target.classList.contains('delete')) return;
-
-    const id = parseInt(e.target.dataset.id);
-    try {
-        await DeleteProduct(id);
-        await loadProducts();
-    } catch (err) {
-        console.error(err);
-        statusEl.textContent = 'Ошибка удаления: ' + err;
-    }
-});
-
-// ---------- Старт ----------
-loadProducts();
+byId('search').addEventListener('input', loadProducts);
+byId('reload-catalog').addEventListener('click', loadProducts);
+window.addEventListener('hashchange', route);
+route();

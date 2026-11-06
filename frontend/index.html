@@ -1,49 +1,41 @@
 <!doctype html>
 <html lang="ru" data-bs-theme="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wails + SQLite</title>
-    <link rel="stylesheet" href="/src/style.css">
-</head>
-<body>
-    <main class="container-xl mt-4">
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">Товары на складе</h3>
-            </div>
-            <div class="card-body">
-                <form id="add-form" class="row g-2 mb-4">
-                    <div class="col-md-5">
-                        <input type="text" id="name" class="form-control" placeholder="Название" required>
-                    </div>
-                    <div class="col-md-4">
-                        <input type="number" id="count" class="form-control" placeholder="Количество" required min="0">
-                    </div>
-                    <div class="col-md-3">
-                        <button type="submit" class="btn btn-primary w-100">Добавить</button>
-                    </div>
-                </form>
-
-                <div id="status" class="mb-3 text-muted">Загрузка...</div>
-
-                <div class="table-responsive">
-                    <table id="products" class="table table-vcenter table-striped card-table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Название</th>
-                                <th>Количество</th>
-                                <th class="w-1"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="products-body"></tbody>
-                    </table>
-                </div>
-            </div>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Учёт склада</title></head>
+<body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
+<div class="app-wrapper">
+  <nav class="app-header navbar navbar-expand bg-body"><div class="container-fluid">
+    <button class="btn btn-outline-secondary" data-lte-toggle="sidebar" aria-label="Боковое меню">☰</button><span class="navbar-text">Учёт склада</span>
+  </div></nav>
+  <aside class="app-sidebar bg-body-secondary shadow" data-bs-theme="dark">
+    <div class="sidebar-brand"><a class="brand-link" href="#products">Склад</a></div>
+    <div class="sidebar-wrapper"><nav aria-label="Основная навигация"><ul class="nav sidebar-menu flex-column">
+      <li class="nav-item"><a class="nav-link" href="#products">Товары</a></li>
+    </ul></nav></div>
+  </aside>
+  <main class="app-main">
+    <div class="app-content-header"><div class="container-fluid"><h1 id="page-title" class="fs-3">Товары</h1></div></div>
+    <div class="app-content"><div class="container-fluid">
+      <section id="catalog-page" class="card" aria-label="Каталог">
+        <div class="card-header"><h2 class="card-title">Товары на складе</h2></div>
+        <div class="card-body">
+          <label class="form-label" for="search">Поиск по названию</label>
+          <input id="search" class="form-control mb-3" type="search" placeholder="Название или его часть">
+          <p class="text-body-secondary">Артикулы отсутствуют в существующей базе.</p>
+          <p id="catalog-status" role="status" aria-live="polite"></p>
+          <button id="reload-catalog" class="btn btn-outline-secondary mb-3">Обновить</button>
+          <div class="table-responsive"><table class="table table-striped align-middle">
+            <thead><tr><th>ID</th><th>Название</th><th>Количество</th><th>Карточка</th></tr></thead><tbody id="products-body"></tbody>
+          </table></div>
         </div>
-    </main>
-
-    <script type="module" src="/src/main.js"></script>
-</body>
-</html>
+      </section>
+      <section id="product-page" class="card" hidden>
+        <div class="card-header"><h2 class="card-title">Карточка товара</h2></div>
+        <div class="card-body"><p id="product-status" role="status"></p><dl id="product-details"></dl>
+          <p class="text-body-secondary">Показаны характеристики из существующей базы. Расширенная карточка относится к модулю №2.</p>
+          <a href="#products" class="btn btn-outline-secondary">К каталогу</a>
+        </div>
+      </section>
+    </div></div>
+  </main>
+</div><script type="module" src="/src/main.js"></script>
+</body></html>
