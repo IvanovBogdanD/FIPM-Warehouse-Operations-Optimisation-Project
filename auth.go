@@ -42,6 +42,7 @@ type UserResponse struct {
 	ID         int    `json:"id"`
 	LastName   string `json:"lastName"`
 	FirstName  string `json:"firstName"`
+	MiddleName string `json:"middleName"`
 	Email      string `json:"email"`
 	Role       string `json:"role"`
 	IsApproved bool   `json:"isApproved"`
@@ -87,8 +88,9 @@ func (a *AuthService) Login(email, password string) (*UserResponse, error) {
 	// Драйвер сам сконвертирует 1/0 в boolean для поля IsApproved.
 	//Метод Scan берёт полученную из базы строку и по очереди раскладывает значения в те переменные, которые мы ему передали. При этом порядок имеет значение
 	err := a.db.QueryRow(
-		`SELECT id, last_name, first_name, role, password_hash, is_approved FROM users WHERE email = ?`, email,
-	).Scan(&user.ID, &user.LastName, &user.FirstName, &user.Role, &hash, &user.IsApproved)
+		`SELECT id, last_name, first_name, middle_name, email, role, password_hash, is_approved 
+		 FROM users WHERE email = ?`, email,
+	).Scan(&user.ID, &user.LastName, &user.FirstName, &user.MiddleName, &user.Email, &user.Role, &hash, &user.IsApproved)
 
 	if err == sql.ErrNoRows {
 		return nil, errors.New("неверный email или пароль")
