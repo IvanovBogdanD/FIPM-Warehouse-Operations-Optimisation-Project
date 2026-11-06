@@ -4,10 +4,10 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const templateFiles = ['index.html', 'src/layout/layout.html', 'src/pages/home/home.html',
-    'src/pages/catalog/catalog.html', 'src/pages/catalog/product.html'];
+    'src/pages/catalog/catalog.html', 'src/pages/catalog/product.html', 'src/pages/orders/orders.html', 'src/pages/receiving/receiving.html'];
 const html = (await Promise.all(templateFiles.map((file) => readFile(new URL(`../${file}`, import.meta.url), 'utf8')))).join('\n');
 const moduleFiles = ['shared/api.js', 'shared/dom.js', 'shared/icons.js', 'layout/layout.js',
-    'pages/home/home.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'app/router.js', 'main.js'];
+    'pages/home/home.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'pages/receiving/receiving.js', 'app/router.js', 'main.js'];
 const scripts = [];
 for (const file of moduleFiles) {
     const url = new URL(`../src/${file}`, import.meta.url);
@@ -21,6 +21,9 @@ for (const file of moduleFiles) {
 const main = scripts.join('\n');
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const product = (count = 10) => ({ id: 1, name: 'Молоко', count });
+const receipt = (count = 10, status = 'pending') => ({
+    id: 'test-order', product: product(count), quantity: 3, responsible: 'Иванов', location: 'Стеллаж 1', status,
+});
 
 function deferred() {
     let resolve, reject;
@@ -51,6 +54,7 @@ class Element {
     async fire(name) {
         for (const callback of this.listeners.get(name) || []) await callback({ preventDefault() {} });
     }
+    dispatchEvent(event) { for (const callback of this.listeners.get(event.type) || []) callback(event); }
     append(...children) { this.children.push(...children); }
     replaceChildren(...children) { this.children = children; }
     insertAdjacentHTML(position, content) {
@@ -70,12 +74,17 @@ async function app(service = {}, hash = '#products') {
         SearchProducts: async () => [product()],
         GetAllProducts: async () => [product()],
         GetProduct: async () => product(),
+        CreateReceiving: async () => receipt(), GetReceiving: async () => receipt(),
+        CompleteReceiving: async () => receipt(13, 'completed'), CancelReceiving: async () => {},
         ...service,
     } } };
     const location = { hash };
-    const navLinks = ['#home', '#products'].map((hash) => Object.assign(new Element(), { hash }));
+    elements['receiving-form'].reset = () => {
+        for (const id of ['receiving-product', 'receiving-quantity', 'receiving-responsible', 'receiving-location']) elements[id].value = '';
+    };
+    const navLinks = ['#home', '#products', '#orders'].map((hash) => Object.assign(new Element(), { hash }));
     const context = vm.createContext({
-        window, location, document: {
+        window, location, Event, document: {
             getElementById: (id) => {
                 assert.ok(elements[id], `Элемент ${id} отсутствует в HTML`);
                 return elements[id];
@@ -88,6 +97,15 @@ async function app(service = {}, hash = '#products') {
     return {
         elements, navLinks,
         async navigate(hash) { location.hash = hash; await window.fire('hashchange'); },
+        async draft() {
+            await this.navigate('#orders/receiving');
+            elements['receiving-product'].value = '1';
+            elements['receiving-quantity'].value = '3';
+            elements['receiving-responsible'].value = 'Иванов';
+            elements['receiving-location'].value = 'Стеллаж 1';
+            await elements['receiving-product'].fire('change');
+            await elements['receiving-form'].fire('submit');
+        },
     };
 }
 
@@ -212,4 +230,119 @@ test('Запоздалый ответ не подменяет обновлённ
     slow.resolve([product(10)]);
     await tick();
     assert.equal(ui.elements['home-total'].textContent, '50');
+});
+
+test('Приёмка проверяет обязательные поля, отменяет черновик без изменения остатка', async () => {
+    let creates = 0, cancels = 0;
+    const ui = await app({
+        CreateReceiving: async () => { creates++; return receipt(); },
+        CancelReceiving: async (id) => { assert.equal(id, 'test-order'); cancels++; },
+    }, '#receiving');
+    for (const quantity of ['', '0', '-1', '1.5', '1e2', '9007199254740992']) {
+        ui.elements['receiving-product'].value = '1';
+        ui.elements['receiving-quantity'].value = quantity;
+        ui.elements['receiving-responsible'].value = 'Иванов';
+        ui.elements['receiving-location'].value = 'Стеллаж 1';
+        await ui.elements['receiving-form'].fire('submit');
+        assert.match(ui.elements['receiving-status'].textContent, /Количество/);
+    }
+    ui.elements['receiving-quantity'].value = '3';
+    ui.elements['receiving-responsible'].value = ' ';
+    await ui.elements['receiving-form'].fire('submit');
+    assert.match(ui.elements['receiving-status'].textContent, /ФИО/);
+    assert.equal(creates, 0);
+    await ui.draft();
+    assert.equal(creates, 1);
+    assert.equal(ui.elements['receiving-current-count'].textContent, '10 шт.');
+    assert.equal(ui.elements['receiving-confirmation'].hidden, false);
+    assert.equal(ui.elements['receiving-fields'].disabled, true);
+    await ui.navigate('#products');
+    await ui.navigate('#receiving');
+    assert.equal(ui.elements['receiving-order-status'].textContent, 'Черновик');
+    await ui.elements['cancel-receiving'].fire('click');
+    assert.equal(cancels, 1);
+    assert.equal(ui.elements['receiving-confirmation'].hidden, true);
+    assert.equal(ui.elements['receiving-fields'].disabled, false);
+    assert.match(ui.elements['receiving-status'].textContent, /не изменён/);
+});
+
+for (const destination of ['#products', '#product/1', '#home']) {
+    test(`Завершение приёмки обновляет открытую страницу ${destination}`, async () => {
+        const completion = deferred();
+        let stock = 10;
+        const ui = await app({
+            GetAllProducts: async () => [product(stock)], SearchProducts: async () => [product(stock)],
+            GetProduct: async () => product(stock), CompleteReceiving: () => completion.promise,
+        });
+        await ui.draft();
+        const finishing = ui.elements['complete-receiving'].fire('click');
+        await ui.navigate(destination);
+        stock = 13;
+        completion.resolve(receipt(stock, 'completed'));
+        await finishing;
+        await tick();
+        const shown = destination === '#products'
+            ? ui.elements['products-body'].children[0].children[2].textContent
+            : destination === '#home' ? ui.elements['home-total'].textContent
+                : ui.elements['product-details'].children[5].textContent;
+        assert.equal(Number(shown), stock);
+    });
+}
+
+test('Повторные нажатия не дублируют приёмку, ошибку SQLite можно повторить', async () => {
+    const creation = deferred(), completion = deferred();
+    let creates = 0, completes = 0, cancels = 0;
+    const ui = await app({
+        CreateReceiving: () => { creates++; return creation.promise; },
+        CompleteReceiving: () => { completes++; return completes === 1 ? completion.promise : Promise.resolve(receipt(13, 'completed')); },
+        CancelReceiving: async () => { cancels++; },
+    });
+    const drafting = ui.draft();
+    await tick();
+    await ui.elements['receiving-form'].fire('submit');
+    assert.equal(creates, 1);
+    creation.resolve(receipt());
+    await drafting;
+    const finishing = ui.elements['complete-receiving'].fire('click');
+    await ui.elements['complete-receiving'].fire('click');
+    await ui.elements['cancel-receiving'].fire('click');
+    assert.equal(completes, 1);
+    assert.equal(cancels, 0);
+    completion.reject(new Error('SQLite write'));
+    await finishing;
+    assert.match(ui.elements['receiving-status'].textContent, /SQLite write/);
+    assert.equal(ui.elements['complete-receiving'].disabled, false);
+    await ui.elements['complete-receiving'].fire('click');
+    assert.equal(ui.elements['receiving-completed-count'].textContent, 'Остаток после завершения: 13 шт.');
+    assert.equal(ui.elements['receiving-actions'].hidden, true);
+    await ui.elements['complete-receiving'].fire('click');
+    assert.equal(completes, 2);
+});
+
+test('Ошибка списка товаров блокирует создание приёмки до повторной загрузки', async () => {
+    let failed = true;
+    const ui = await app({ GetAllProducts: async () => { if (failed) throw new Error('SQLite read'); return [product()]; } }, '#receiving');
+    assert.equal(ui.elements['receiving-fields'].disabled, true);
+    assert.match(ui.elements['receiving-status'].textContent, /SQLite read/);
+    failed = false;
+    await ui.elements['reload-receiving'].fire('click');
+    assert.equal(ui.elements['receiving-fields'].disabled, false);
+});
+
+test('Приёмка открывается внутри заказов и сохраняет черновик при возврате', async () => {
+    const ui = await app({}, '#orders');
+    assert.equal(ui.elements['orders-page'].hidden, false);
+    assert.equal(ui.elements['receiving-page'].hidden, true);
+    assert.equal(ui.navLinks[2]['aria-current'], 'page');
+    await ui.draft();
+    assert.equal(ui.elements['orders-page'].hidden, true);
+    assert.equal(ui.elements['receiving-page'].hidden, false);
+    assert.equal(ui.elements['page-title'].textContent, 'Заказы');
+    assert.equal(ui.navLinks[2]['aria-current'], 'page');
+    await ui.navigate('#orders');
+    await ui.navigate('#orders/receiving');
+    assert.equal(ui.elements['receiving-order-status'].textContent, 'Черновик');
+    assert.equal(ui.elements['receiving-fields'].disabled, true);
+    await ui.elements['cancel-receiving'].fire('click');
+    assert.equal(ui.elements['receiving-fields'].disabled, false);
 });

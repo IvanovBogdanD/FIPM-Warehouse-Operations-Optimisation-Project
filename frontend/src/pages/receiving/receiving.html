@@ -1,0 +1,62 @@
+<section id="receiving-page" aria-label="Приёмка" hidden>
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+    <h1 class="h3 fw-bold mb-0">Приёмка товара</h1>
+    <a href="#orders" class="btn btn-outline-secondary">К заказам</a>
+  </div>
+  <p class="alert alert-info">Черновики, ФИО и место хранения доступны только до закрытия приложения. История заказов не сохраняется. Остаток записывается в базу после подтверждения приёмки.</p>
+  <p id="receiving-status" role="status" aria-live="polite"></p>
+  <div class="row g-4">
+    <div class="col-lg-7">
+      <div class="card shadow-none border">
+        <div class="card-header bg-body py-3"><h2 class="card-title fw-semibold">Новый заказ</h2></div>
+        <div class="card-body">
+          <button id="reload-receiving" class="btn btn-outline-secondary btn-sm mb-3">Обновить товары</button>
+          <form id="receiving-form">
+            <fieldset id="receiving-fields" class="border-0 p-0 m-0" disabled>
+              <div class="mb-3">
+                <label class="form-label" for="receiving-product">Товар</label>
+                <select id="receiving-product" class="form-select" required><option value="">Выберите товар</option></select>
+              </div>
+              <p>Текущий остаток: <output id="receiving-current-count" class="fw-semibold">Не выбран</output></p>
+              <div class="mb-3">
+                <label class="form-label" for="receiving-quantity">Принимаемое количество</label>
+                <input id="receiving-quantity" class="form-control" type="text" inputmode="numeric" pattern="[0-9]+" required aria-describedby="receiving-quantity-help">
+                <div id="receiving-quantity-help" class="form-text">Целое число от 1 до 9007199254740991.</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="receiving-responsible">ФИО ответственного</label>
+                <input id="receiving-responsible" class="form-control" type="text" required>
+              </div>
+              <div class="mb-4">
+                <label class="form-label" for="receiving-location">Место хранения</label>
+                <input id="receiving-location" class="form-control" type="text" required>
+              </div>
+              <button id="create-receiving" class="btn btn-primary" type="submit">Создать черновик</button>
+            </fieldset>
+          </form>
+        </div>
+        <div class="card-footer bg-body text-body-secondary small">При создании черновика количество товара не меняется.</div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <section class="card shadow-none border">
+        <div class="card-header bg-body py-3"><h2 class="card-title fw-semibold">Проверка заказа</h2></div>
+        <div class="card-body">
+          <p id="receiving-empty" class="text-body-secondary mb-0">Заполните форму и создайте черновик. Здесь появятся данные для подтверждения.</p>
+          <div id="receiving-confirmation" hidden>
+            <span id="receiving-order-status" class="badge text-bg-primary mb-3"></span>
+            <p id="receiving-order-id" class="text-body-secondary small text-break"></p>
+            <dl id="receiving-summary"></dl>
+            <p id="receiving-completed-count" class="alert alert-success" hidden></p>
+            <div id="receiving-actions" class="d-flex flex-wrap gap-2 mb-3">
+              <button id="complete-receiving" class="btn btn-success">Завершить приёмку</button>
+              <button id="cancel-receiving" class="btn btn-outline-danger">Отменить черновик</button>
+            </div>
+            <a id="receiving-product-link" class="btn btn-outline-secondary">Карточка товара</a>
+            <button id="new-receiving" class="btn btn-primary ms-2" hidden>Новая приёмка</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</section>

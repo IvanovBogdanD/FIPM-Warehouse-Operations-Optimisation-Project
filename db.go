@@ -3,12 +3,15 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"sync"
 
 	_ "modernc.org/sqlite"
 )
 
 type DBService struct {
-	db *sql.DB
+	db          *sql.DB
+	receivingMu sync.Mutex
+	receiving   map[string]ReceivingOrder
 }
 
 func NewDBService() (*DBService, error) {

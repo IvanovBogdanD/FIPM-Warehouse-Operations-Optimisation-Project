@@ -34,7 +34,7 @@ func main() {
 
 		BackgroundColour: &options.RGBA{R: 248, G: 249, B: 250, A: 1},
 
-		//  Регистрация сервиса в v2 — через Bind
+		// Регистрация сервиса через Bind
 		Bind: []interface{}{
 			dbService,
 		},
