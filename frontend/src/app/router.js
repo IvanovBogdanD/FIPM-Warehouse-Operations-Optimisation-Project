@@ -5,6 +5,7 @@ import { loadProduct } from '../pages/catalog/product.js';
 import { loadReceiving } from '../pages/receiving/receiving.js';
 import { loadUsers } from '../pages/users/users.js';
 import { loadInventory } from '../pages/inventory/inventory.js';
+import { loadOrders } from '../pages/orders/orders.js';
 
 function updateMenuVisibility(role) {
     const menuItems = ['nav-home', 'nav-products', 'nav-orders', 'nav-inventory', 'nav-analytics', 'nav-analytics-header', 'nav-users'];
@@ -124,6 +125,7 @@ async function route() {
     if (page === 'home') await loadHome();
     if (page === 'catalog') await loadProducts();
     if (page === 'product') await loadProduct(Number(productMatch[1]));
+    if (page === 'orders') await loadOrders();
     if (page === 'receiving') await loadReceiving();
     if (page === 'users') await loadUsers();
     if (page === 'inventory') await loadInventory();
