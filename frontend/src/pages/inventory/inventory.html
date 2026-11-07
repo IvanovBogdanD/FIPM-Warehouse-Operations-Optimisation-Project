@@ -1,0 +1,59 @@
+<div id="inventory-page" hidden>
+  <div class="d-flex align-items-center mb-4">
+    <h4 class="mb-0">Инвентаризация</h4>
+  </div>
+
+  <div id="inventory-empty" class="card shadow-sm border-0">
+    <div class="card-body text-center py-5">
+      <p class="text-muted mb-3">Активной инвентаризации нет.</p>
+      <button class="btn btn-primary" id="btn-create-inventory">Создать инвентаризацию</button>
+    </div>
+  </div>
+
+  <div id="inventory-active" class="d-none">
+    <div class="card shadow-sm border-0">
+      <div class="card-header bg-transparent d-flex align-items-center py-3">
+        <h5 class="card-title mb-0">
+          Инвентаризация #<span id="inventory-id"></span>
+        </h5>
+        <span id="inventory-status-badge" class="badge ms-2"></span>
+      </div>
+
+      <div class="card-body">
+        <div class="row g-2 mb-3">
+          <div class="col-md-8">
+            <input type="text" class="form-control" id="inventory-product-search"
+                   placeholder="Поиск товара для добавления...">
+          </div>
+          <div class="col-md-4">
+            <button class="btn btn-outline-primary w-100" id="inventory-product-search-btn">Найти</button>
+          </div>
+        </div>
+
+        <div id="inventory-search-results" class="list-group mb-3"></div>
+
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Товар</th>
+                <th class="text-end">По системе</th>
+                <th class="text-end" style="width: 160px;">Факт</th>
+                <th class="text-end">Разница</th>
+              </tr>
+            </thead>
+            <tbody id="inventory-items-body">
+              <tr><td colspan="4" class="text-center text-muted py-4">Товары не добавлены</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card-footer bg-transparent d-flex justify-content-end">
+        <button class="btn btn-success" id="btn-apply-inventory" disabled>
+          Применить корректировку остатков
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
