@@ -1,0 +1,95 @@
+<section id="order-form-page" aria-label="Новый заказ" hidden>
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+    <h1 class="h3 fw-bold mb-0">Новый заказ</h1>
+    <div class="d-flex flex-wrap gap-2">
+      <div class="btn-group" role="group" aria-label="Тип заказа">
+        <a id="order-form-type-shipment" class="btn btn-outline-primary" href="#orders/new">Отгрузка</a>
+        <a id="order-form-type-writeoff" class="btn btn-outline-primary" href="#orders/new/writeoff">Списание</a>
+      </div>
+      <a href="#orders" class="btn btn-outline-secondary">К заказам</a>
+    </div>
+  </div>
+
+  <form id="order-form">
+    <fieldset id="order-form-fields" class="border-0 p-0 m-0" disabled>
+      <div class="row g-4 align-items-start">
+        <div class="col-xl-8">
+          <section class="card shadow-none border">
+            <div class="card-header bg-body py-3"><h2 class="card-title fw-semibold">Параметры заказа</h2></div>
+            <div class="card-body">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label id="order-form-date-label" class="form-label" for="order-form-date">Дата отгрузки</label>
+                  <input id="order-form-date" class="form-control" type="date" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="order-form-responsible">ФИО ответственного</label>
+                  <input id="order-form-responsible" class="form-control" type="text" required>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="order-form-address">Адрес доставки / объекта</label>
+                  <input id="order-form-address" class="form-control" type="text" required>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="order-form-note">Примечание</label>
+                  <textarea id="order-form-note" class="form-control" rows="2" aria-describedby="order-form-note-help"></textarea>
+                  <div id="order-form-note-help" class="form-text">Для списания укажите причину: брак, истёк срок хранения, порча и т.д.</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card shadow-none border mb-0">
+            <div class="card-header bg-body d-flex flex-wrap align-items-center justify-content-between gap-3 py-3">
+              <h2 class="card-title fw-semibold mb-0">Товары в заказе</h2>
+              <div class="d-flex gap-2">
+                <select id="order-form-product" class="form-select" aria-label="Добавить товар"></select>
+                <button id="order-form-reload" class="btn btn-outline-secondary text-nowrap" type="button">Обновить</button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="table align-middle mb-0">
+                <thead class="table-light"><tr><th scope="col">Товар</th><th scope="col" class="text-end">Свободно</th><th scope="col">Количество</th><th scope="col" class="text-end">Останется свободно</th><th scope="col"><span class="visually-hidden">Убрать</span></th></tr></thead>
+                <tbody id="order-form-items"></tbody>
+              </table>
+            </div>
+            <p id="order-form-items-empty" class="text-center text-body-secondary py-4 mb-0">Выберите товар в списке выше.</p>
+          </section>
+        </div>
+
+        <div class="col-xl-4">
+          <section class="card shadow-none border">
+            <div class="card-header bg-body py-3"><h2 class="card-title fw-semibold">Итог заказа</h2></div>
+            <div class="card-body"><dl id="order-form-summary" class="mb-0"></dl></div>
+          </section>
+          <p class="alert alert-info"><strong>Что произойдёт при создании.</strong> Указанное количество будет помещено в бронь и вычтено из свободного остатка. Общий остаток не изменится до отгрузки. Заказ и бронь доступны только до закрытия приложения.</p>
+          <p id="order-form-status" role="status" aria-live="polite"></p>
+          <button id="order-form-submit" class="btn btn-primary w-100" type="submit">Создать заказ</button>
+        </div>
+      </div>
+    </fieldset>
+  </form>
+</section>
+
+<div id="order-created-modal" class="modal fade" tabindex="-1" aria-labelledby="order-created-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="order-created-title" class="modal-title h5"></h2>
+      </div>
+      <div class="modal-body">
+        <p id="order-created-text" class="text-body-secondary"></p>
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead class="table-light"><tr><th scope="col">Товар</th><th scope="col" class="text-end">Свободно</th><th scope="col" class="text-end">В брони</th><th scope="col" class="text-end">Всего</th></tr></thead>
+            <tbody id="order-created-items"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="order-created-list" class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">К списку заказов</button>
+        <button id="order-created-open" class="btn btn-primary" type="button" data-bs-dismiss="modal">Открыть заказ</button>
+      </div>
+    </div>
+  </div>
+</div>

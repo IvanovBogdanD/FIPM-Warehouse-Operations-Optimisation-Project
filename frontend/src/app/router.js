@@ -6,6 +6,7 @@ import { loadReceiving } from '../pages/receiving/receiving.js';
 import { loadUsers } from '../pages/users/users.js';
 import { loadInventory } from '../pages/inventory/inventory.js';
 import { loadOrders } from '../pages/orders/orders.js';
+import { loadOrderForm } from '../pages/order-form/order-form.js';
 
 function updateMenuVisibility(role) {
     const menuItems = ['nav-home', 'nav-products', 'nav-orders', 'nav-inventory', 'nav-analytics', 'nav-analytics-header', 'nav-users'];
@@ -75,7 +76,7 @@ async function route() {
         }
     } 
     else if (user.role === 'Администратор') {
-        if (['products', 'product', 'orders', 'receiving', 'inventory'].includes(hash)) {
+        if (['products', 'product', 'orders', 'orders/new', 'orders/new/writeoff', 'receiving', 'inventory'].includes(hash)) {
             location.hash = '#users';
             return;
         }
@@ -90,20 +91,22 @@ async function route() {
     updateMenuVisibility(user.role);
 
     const productMatch = /^product\/(\d+)$/.exec(hash);
+    const orderFormMatch = /^orders\/new(\/writeoff)?$/.exec(hash);
     let page = 'home';
     if (hash === 'products') page = 'catalog';
     if (productMatch) page = 'product';
     if (hash === 'orders') page = 'orders';
+    if (orderFormMatch) page = 'order-form';
     if (hash === 'orders/receiving' || hash === 'receiving') page = 'receiving';
     if (hash === 'users') page = 'users';
     if (hash === 'inventory') page = 'inventory';
-    
-    const titles = { 
+
+    const titles = {
         home: 'Главная', catalog: 'Товары', product: 'Товары / Карточка товара',
-        orders: 'Заказы', receiving: 'Заказы', users: 'Пользователи', inventory: 'Инвентаризация' 
+        orders: 'Заказы', 'order-form': 'Заказы', receiving: 'Заказы', users: 'Пользователи', inventory: 'Инвентаризация'
     };
-    
-    for (const name of ['home', 'catalog', 'product', 'orders', 'receiving', 'users', 'inventory']) {
+
+    for (const name of ['home', 'catalog', 'product', 'orders', 'order-form', 'receiving', 'users', 'inventory']) {
         const el = byId(`${name}-page`);
         if (el) el.hidden = page !== name;
     }
@@ -111,10 +114,10 @@ async function route() {
     
     let activeHash = '#home';
     if (page === 'catalog' || page === 'product') activeHash = '#products';
-    if (page === 'orders' || page === 'receiving') activeHash = '#orders';
+    if (page === 'orders' || page === 'order-form' || page === 'receiving') activeHash = '#orders';
     if (page === 'users') activeHash = '#users';
     if (page === 'inventory') activeHash = '#inventory';
-    
+
     document.querySelectorAll('.sidebar-menu a.nav-link').forEach((link) => {
         const active = link.hash === activeHash;
         link.classList.toggle('active', active);
@@ -126,6 +129,7 @@ async function route() {
     if (page === 'catalog') await loadProducts();
     if (page === 'product') await loadProduct(Number(productMatch[1]));
     if (page === 'orders') await loadOrders();
+    if (page === 'order-form') await loadOrderForm(orderFormMatch[1] ? 'writeoff' : 'shipment');
     if (page === 'receiving') await loadReceiving();
     if (page === 'users') await loadUsers();
     if (page === 'inventory') await loadInventory();

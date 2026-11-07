@@ -21,6 +21,9 @@ type Order struct {
 	ShipmentDate *time.Time  `json:"shipmentDate"`
 	Responsible  string      `json:"responsible"`
 	Location     string      `json:"location"`
+	Address      string      `json:"address"`
+	Note         string      `json:"note"`
+	CompletedBy  string      `json:"completedBy"`
 	Items        []OrderItem `json:"items"`
 }
 
@@ -38,14 +41,17 @@ func (o ReceivingOrder) toOrder() Order {
 }
 
 func (s *DBService) GetOrders() []Order {
-	s.receivingMu.Lock()
-	defer s.receivingMu.Unlock()
-	orders := make([]Order, 0, len(s.receiving)+len(s.cancelledReceiving))
+	s.ordersMu.Lock()
+	defer s.ordersMu.Unlock()
+	orders := make([]Order, 0, len(s.receiving)+len(s.cancelledReceiving)+len(s.outgoing))
 	for _, order := range s.receiving {
 		orders = append(orders, order.toOrder())
 	}
 	for _, order := range s.cancelledReceiving {
 		orders = append(orders, order.toOrder())
+	}
+	for _, order := range s.outgoing {
+		orders = append(orders, order)
 	}
 	sort.Slice(orders, func(i, j int) bool {
 		if orders[i].CreatedAt.Equal(orders[j].CreatedAt) {
@@ -57,8 +63,11 @@ func (s *DBService) GetOrders() []Order {
 }
 
 func (s *DBService) CancelOrder(id string) (Order, error) {
-	s.receivingMu.Lock()
-	defer s.receivingMu.Unlock()
+	s.ordersMu.Lock()
+	defer s.ordersMu.Unlock()
+	if order, ok := s.outgoing[id]; ok {
+		return s.cancelOutgoing(order)
+	}
 	if _, cancelled := s.cancelledReceiving[id]; cancelled {
 		return Order{}, errors.New("заказ уже отменён")
 	}

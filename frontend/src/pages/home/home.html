@@ -21,8 +21,8 @@
       <div class="card bg-success-subtle border-0 h-100 mb-0">
         <div class="card-body">
           <p class="text-success-emphasis mb-2">Свободный остаток</p>
-          <p class="fs-4 fw-semibold text-success-emphasis mb-1">Нет данных</p>
-          <p class="text-success-emphasis small mb-0">Учёт брони пока недоступен</p>
+          <p class="mb-1"><strong id="home-free" class="fs-2 text-success-emphasis">…</strong> <span class="text-success-emphasis">шт.</span></p>
+          <p class="text-success-emphasis small mb-0">Общий остаток минус бронь</p>
         </div>
       </div>
     </div>
@@ -30,8 +30,8 @@
       <div class="card bg-warning-subtle border-0 h-100 mb-0">
         <div class="card-body">
           <p class="text-warning-emphasis mb-2">В брони</p>
-          <p class="fs-4 fw-semibold text-warning-emphasis mb-1">Нет данных</p>
-          <p class="text-warning-emphasis small mb-0">Учёт заказов пока недоступен</p>
+          <p class="mb-1"><strong id="home-reserved" class="fs-2 text-warning-emphasis">…</strong> <span class="text-warning-emphasis">шт.</span></p>
+          <p class="text-warning-emphasis small mb-0">По заказам до закрытия приложения</p>
         </div>
       </div>
     </div>
@@ -39,8 +39,8 @@
       <div class="card bg-primary-subtle border-0 h-100 mb-0">
         <div class="card-body">
           <p class="text-primary-emphasis mb-2">Отгрузок сегодня</p>
-          <p class="fs-4 fw-semibold text-primary-emphasis mb-1">Нет данных</p>
-          <p class="text-primary-emphasis small mb-0">Отгрузки пока недоступны</p>
+          <p class="mb-1"><strong id="home-shipments-today" class="fs-2 text-primary-emphasis">…</strong></p>
+          <p class="text-primary-emphasis small mb-0">Запланировано и выполнено</p>
         </div>
       </div>
     </div>
@@ -54,16 +54,16 @@
       </a>
     </div>
     <div class="col-sm-6 col-xl-3">
-      <button class="info-box border h-100 mb-0 text-start" disabled>
+      <a href="#orders/new" class="info-box border h-100 mb-0 text-decoration-none">
         <span class="info-box-icon bg-primary-subtle text-primary">{{box-arrow-up}}</span>
-        <span class="info-box-content"><strong>Заказ на отгрузку</strong><span class="text-body-secondary small">В разработке</span></span>
-      </button>
+        <span class="info-box-content"><strong>Заказ на отгрузку</strong><span class="text-body-secondary small">Бронь товара под заказ</span></span>
+      </a>
     </div>
     <div class="col-sm-6 col-xl-3">
-      <button class="info-box border h-100 mb-0 text-start" disabled>
+      <a href="#orders/new/writeoff" class="info-box border h-100 mb-0 text-decoration-none">
         <span class="info-box-icon bg-danger-subtle text-danger">{{x-lg}}</span>
-        <span class="info-box-content"><strong>Списание</strong><span class="text-body-secondary small">В разработке</span></span>
-      </button>
+        <span class="info-box-content"><strong>Списание</strong><span class="text-body-secondary small">Брак, порча, недостача</span></span>
+      </a>
     </div>
     <div class="col-sm-6 col-xl-3">
       <button class="info-box border h-100 mb-0 text-start" disabled>
@@ -80,12 +80,13 @@
         <div class="table-responsive">
           <table class="table align-middle mb-0">
             <thead class="table-light"><tr><th scope="col">№ заказа</th><th scope="col">Тип</th><th scope="col">Статус</th><th scope="col">Отгрузка</th><th scope="col">Ответственный</th><th scope="col">Шт.</th></tr></thead>
-            <tbody><tr><td colspan="6" class="text-center text-body-secondary py-5">Отгрузки пока недоступны.<br>Здесь появятся заказы после подключения модуля.</td></tr></tbody>
+            <tbody id="home-shipments"></tbody>
           </table>
         </div>
+        <p id="home-shipments-empty" class="text-center text-body-secondary py-5 mb-0">Активных заказов на отгрузку нет.</p>
         <div class="card-footer bg-body d-flex justify-content-between align-items-center gap-3">
-          <span class="text-body-secondary small">Текущие товары и остатки доступны в каталоге</span>
-          <a href="#products" class="btn btn-outline-primary btn-sm text-nowrap">К товарам</a>
+          <span class="text-body-secondary small">Все заказы и их состав доступны во вкладке заказов</span>
+          <a href="#orders" class="btn btn-outline-primary btn-sm text-nowrap">К заказам</a>
         </div>
       </section>
     </div>

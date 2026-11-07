@@ -7,10 +7,10 @@
       </button>
       <ul class="dropdown-menu dropdown-menu-end">
         <li>
-          <span id="orders-create-order" class="dropdown-item disabled py-2" aria-disabled="true">
+          <a id="orders-create-order" class="dropdown-item py-2" href="#orders/new">
             <span class="d-block fw-semibold">Создать заказ</span>
-            <small>Модуль в разработке</small>
-          </span>
+            <small class="text-body-secondary">Отгрузка или списание товара</small>
+          </a>
         </li>
         <li>
           <a id="orders-create-receiving" class="dropdown-item py-2" href="#orders/receiving">
@@ -21,11 +21,11 @@
       </ul>
     </div>
   </div>
-  <p class="alert alert-info">Заказы доступны только до закрытия приложения: в существующей базе нет таблицы заказов. Сейчас здесь видны заказы на приёмку, заказы на отгрузку появятся вместе с модулем их создания.</p>
+  <p class="alert alert-info">Заказы и бронь доступны только до закрытия приложения: в существующей базе нет таблиц для них. В базе сохраняются только остатки после отгрузки, списания и приёмки.</p>
 
   <ul class="nav nav-tabs mb-3">
     <li class="nav-item"><button id="orders-tab-all" class="nav-link active" type="button">Все <span id="orders-count-all" class="badge text-bg-light">0</span></button></li>
-    <li class="nav-item"><button id="orders-tab-pending" class="nav-link" type="button">Черновики <span id="orders-count-pending" class="badge text-bg-light">0</span></button></li>
+    <li class="nav-item"><button id="orders-tab-active" class="nav-link" type="button">Активные <span id="orders-count-active" class="badge text-bg-light">0</span></button></li>
     <li class="nav-item"><button id="orders-tab-completed" class="nav-link" type="button">Завершённые <span id="orders-count-completed" class="badge text-bg-light">0</span></button></li>
     <li class="nav-item"><button id="orders-tab-cancelled" class="nav-link" type="button">Отменённые <span id="orders-count-cancelled" class="badge text-bg-light">0</span></button></li>
   </ul>
@@ -65,6 +65,7 @@
               </table>
             </div>
             <p class="d-flex justify-content-between fw-semibold mb-3"><span id="order-positions"></span><span id="order-total"></span></p>
+            <button id="order-complete" class="btn btn-primary w-100 mb-2" type="button" data-bs-toggle="modal" data-bs-target="#order-complete-modal" hidden></button>
             <button id="order-cancel" class="btn btn-outline-danger w-100" type="button" data-bs-toggle="modal" data-bs-target="#order-cancel-modal">Отменить заказ</button>
           </div>
         </div>
@@ -79,10 +80,44 @@
       <div class="modal-header">
         <h2 id="order-cancel-title" class="modal-title h5"></h2>
       </div>
-      <div class="modal-body">Это черновик приёмки: остаток товара не изменится. Действие нельзя отменить.</div>
+      <div id="order-cancel-text" class="modal-body"></div>
       <div class="modal-footer">
         <button id="order-cancel-back" class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Назад</button>
         <button id="order-cancel-confirm" class="btn btn-danger" type="button" data-bs-dismiss="modal">Отменить заказ</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="order-complete-modal" class="modal fade" tabindex="-1" aria-labelledby="order-complete-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="order-complete-title" class="modal-title h5"></h2>
+      </div>
+      <div class="modal-body">
+        <p id="order-complete-text" class="text-body-secondary"></p>
+        <div class="table-responsive">
+          <table class="table align-middle">
+            <thead class="table-light"><tr><th scope="col">Товар</th><th id="order-complete-column" scope="col" class="text-end"></th><th scope="col" class="text-end">В брони</th><th scope="col" class="text-end">Всего на складе</th></tr></thead>
+            <tbody id="order-complete-items"></tbody>
+          </table>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label id="order-complete-date-label" class="form-label fw-semibold" for="order-complete-date"></label>
+            <input id="order-complete-date" class="form-control" type="date">
+          </div>
+          <div class="col-md-6">
+            <label id="order-complete-person-label" class="form-label fw-semibold" for="order-complete-person"></label>
+            <input id="order-complete-person" class="form-control" type="text">
+          </div>
+        </div>
+        <p id="order-complete-status" class="mt-3 mb-0" role="status" aria-live="polite"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Назад</button>
+        <button id="order-complete-confirm" class="btn btn-primary" type="button"></button>
       </div>
     </div>
   </div>

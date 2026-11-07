@@ -9,6 +9,7 @@
   <p id="product-status" role="status" aria-live="polite"></p>
 
   <div id="product-card" hidden>
+    <p id="product-warning" class="alert alert-warning" hidden>Забронировано больше, чем есть на складе. Проверьте активные заказы.</p>
     <div class="row g-4 mb-4">
       <div class="col-lg-4">
         <section class="card shadow-none border h-100 mb-0">
@@ -30,7 +31,7 @@
         <section class="card shadow-none border h-100 mb-0">
           <div class="card-body">
             <h2 class="h6 fw-semibold mb-3">Остатки</h2>
-            <div class="row g-3 mb-4">
+            <div class="row g-3 mb-3">
               <div class="col-md-4">
                 <div class="bg-body-secondary rounded p-3 h-100">
                   <p class="small text-body-secondary mb-1">Количество товара</p>
@@ -40,16 +41,24 @@
               <div class="col-md-4">
                 <div class="bg-success-subtle rounded p-3 h-100">
                   <p class="small text-success-emphasis mb-1">Свободное количество</p>
-                  <p class="fs-5 fw-semibold text-success-emphasis mb-0">Нет данных</p>
+                  <p class="mb-0"><strong id="product-free" class="fs-3 text-success-emphasis"></strong> <span class="text-success-emphasis">шт.</span></p>
                 </div>
               </div>
               <div class="col-md-4">
                 <div class="bg-warning-subtle rounded p-3 h-100">
                   <p class="small text-warning-emphasis mb-1">Количество в брони</p>
-                  <p class="fs-5 fw-semibold text-warning-emphasis mb-0">Нет данных</p>
+                  <p class="mb-0"><strong id="product-reserved" class="fs-3 text-warning-emphasis"></strong> <span class="text-warning-emphasis">шт.</span></p>
                 </div>
               </div>
             </div>
+            <div class="progress-stacked mb-2" aria-hidden="true">
+              <div id="product-bar-free" class="progress"><div class="progress-bar bg-success"></div></div>
+              <div id="product-bar-reserved" class="progress"><div class="progress-bar bg-warning"></div></div>
+            </div>
+            <p class="d-flex flex-wrap gap-3 small text-body-secondary mb-4">
+              <span><span class="text-success" aria-hidden="true">■</span> <span id="product-free-share"></span></span>
+              <span><span class="text-warning" aria-hidden="true">■</span> <span id="product-reserved-share"></span></span>
+            </p>
 
             <h2 class="h6 fw-semibold mb-2">Информация о товаре</h2>
             <div class="row gx-5">
@@ -67,7 +76,7 @@
       </div>
     </div>
 
-    <section class="card shadow-none border mb-3">
+    <section class="card shadow-none border mb-4">
       <div class="card-body">
         <h2 class="h6 fw-semibold mb-3">Физические размеры (1 шт.)</h2>
         <div class="row row-cols-2 row-cols-md-3 row-cols-xl-6 g-2">
@@ -81,6 +90,6 @@
       </div>
     </section>
 
-    <p class="small text-body-secondary mb-0">В существующей базе есть только ID, название и количество товара.</p>
+    <p class="small text-body-secondary mb-0">В существующей базе есть только ID, название и количество товара. Свободное количество и бронь рассчитываются по текущим заказам.</p>
   </div>
 </section>
