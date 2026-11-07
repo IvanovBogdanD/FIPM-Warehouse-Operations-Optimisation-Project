@@ -99,7 +99,7 @@ async function route() {
     if (hash === 'inventory') page = 'inventory';
     
     const titles = { 
-        home: 'Главная', catalog: 'Товары', product: 'Карточка товара', 
+        home: 'Главная', catalog: 'Товары', product: 'Товары / Карточка товара',
         orders: 'Заказы', receiving: 'Заказы', users: 'Пользователи', inventory: 'Инвентаризация' 
     };
     

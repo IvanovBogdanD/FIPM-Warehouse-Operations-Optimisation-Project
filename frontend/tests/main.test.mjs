@@ -4,10 +4,12 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const templateFiles = ['index.html', 'src/layout/layout.html', 'src/pages/home/home.html',
-    'src/pages/catalog/catalog.html', 'src/pages/catalog/product.html', 'src/pages/orders/orders.html', 'src/pages/receiving/receiving.html'];
+    'src/pages/catalog/catalog.html', 'src/pages/catalog/product.html', 'src/pages/orders/orders.html', 'src/pages/receiving/receiving.html',
+    'src/pages/auth/auth.html', 'src/pages/users/users.html', 'src/pages/inventory/inventory.html'];
 const html = (await Promise.all(templateFiles.map((file) => readFile(new URL(`../${file}`, import.meta.url), 'utf8')))).join('\n');
 const moduleFiles = ['shared/api.js', 'shared/dom.js', 'shared/icons.js', 'layout/layout.js',
-    'pages/home/home.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'pages/receiving/receiving.js', 'pages/orders/orders.js', 'app/router.js', 'main.js'];
+    'pages/home/home.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'pages/receiving/receiving.js', 'pages/orders/orders.js',
+    'pages/auth/auth.js', 'pages/users/users.js', 'pages/inventory/inventory.js', 'app/router.js', 'main.js'];
 const scripts = [];
 for (const file of moduleFiles) {
     const url = new URL(`../src/${file}`, import.meta.url);
@@ -80,6 +82,7 @@ class Element {
 
 async function app(service = {}, hash = '#products') {
     const elements = Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id, new Element()]));
+    for (const id of ['main-layout', 'auth-page']) elements[id] = new Element();
     const window = new Element();
     window.go = { main: { DBService: {
         SearchProducts: async () => [product()],
@@ -90,13 +93,23 @@ async function app(service = {}, hash = '#products') {
         GetOrders: async () => [], CancelOrder: async () => order('cancelled'),
         ...service,
     } } };
-    const location = { hash };
+    let currentHash = hash;
+    const location = {
+        get hash() { return currentHash; },
+        set hash(value) {
+            if (value === currentHash) return;
+            currentHash = value;
+            Promise.resolve().then(() => window.fire('hashchange'));
+        },
+    };
     elements['receiving-form'].reset = () => {
         for (const id of ['receiving-product', 'receiving-quantity', 'receiving-responsible', 'receiving-location']) elements[id].value = '';
     };
     const navLinks = ['#home', '#products', '#orders'].map((hash) => Object.assign(new Element(), { hash }));
     const context = vm.createContext({
-        window, location, Event, document: {
+        window, location, Event,
+        sessionStorage: { getItem: () => JSON.stringify({ role: 'Менеджер', firstName: 'Иван', lastName: 'Иванов' }) },
+        document: {
             getElementById: (id) => {
                 assert.ok(elements[id], `Элемент ${id} отсутствует в HTML`);
                 return elements[id];
@@ -108,7 +121,7 @@ async function app(service = {}, hash = '#products') {
     await tick();
     return {
         elements, navLinks,
-        async navigate(hash) { location.hash = hash; await window.fire('hashchange'); },
+        async navigate(hash) { currentHash = hash; await window.fire('hashchange'); },
         async draft() {
             await this.navigate('#orders/receiving');
             elements['receiving-product'].value = '1';
@@ -152,8 +165,10 @@ test('Ссылка открывает карточку с данными тов�
     await ui.navigate(link.href);
     assert.equal(ui.elements['catalog-page'].hidden, true);
     assert.equal(ui.elements['product-page'].hidden, false);
-    assert.deepEqual(ui.elements['product-details'].children.map((child) => child.textContent),
-        ['ID', 1, 'Название', 'Молоко', 'Количество', 10]);
+    assert.equal(ui.elements['product-name'].textContent, 'Молоко');
+    assert.equal(ui.elements['product-info-name'].textContent, 'Молоко');
+    assert.equal(ui.elements['product-id'].textContent, 'ID 1');
+    assert.equal(ui.elements['product-count'].textContent, '10');
     await ui.navigate('#products');
     assert.equal(ui.elements['catalog-page'].hidden, false);
     assert.equal(ui.elements['product-page'].hidden, true);
@@ -170,7 +185,9 @@ test('Ошибки загрузки видны, обновление катал�
     assert.equal(ui.elements['products-body'].children.length, 0);
     await ui.navigate('#product/999');
     assert.match(ui.elements['product-status'].textContent, /товар не найден/);
-    assert.equal(ui.elements['product-details'].children.length, 0);
+    assert.equal(ui.elements['product-card'].hidden, true);
+    assert.equal(ui.elements['product-summary'].hidden, true);
+    assert.equal(ui.elements['product-name'].textContent, 'Карточка товара');
     failed = false;
     await ui.navigate('#products');
     await ui.elements['reload-catalog'].fire('click');
@@ -188,8 +205,8 @@ test('Запоздалый ответ карточки не подменяет �
     await ui.navigate('#product/2');
     slow.resolve(product());
     await old;
-    assert.deepEqual(ui.elements['product-details'].children.map((child) => child.textContent),
-        ['ID', 2, 'Название', 'Хлеб', 'Количество', 5]);
+    assert.equal(ui.elements['product-name'].textContent, 'Хлеб');
+    assert.equal(ui.elements['product-count'].textContent, '5');
 });
 
 test('Навигация не дублирует обработчики поиска и обновления', async () => {
@@ -296,7 +313,7 @@ for (const destination of ['#products', '#product/1', '#home']) {
         const shown = destination === '#products'
             ? ui.elements['products-body'].children[0].children[2].textContent
             : destination === '#home' ? ui.elements['home-total'].textContent
-                : ui.elements['product-details'].children[5].textContent;
+                : ui.elements['product-count'].textContent;
         assert.equal(Number(shown), stock);
     });
 }
@@ -359,18 +376,41 @@ test('Приёмка открывается внутри заказов и со�
     assert.equal(ui.elements['receiving-fields'].disabled, false);
 });
 
-test('Карточка скрывает поля без данных, если товар не загружен', async () => {
-    const ui = await app({ GetProduct: async (id) => { if (id === 999) throw new Error('товар не найден'); return product(); } });
+test('Карточка показывает наличие и скрывает данные, если товар не загружен', async () => {
+    const counts = { 1: 1240, 2: 0 };
+    const ui = await app({
+        GetProduct: async (id) => {
+            if (!(id in counts)) throw new Error('товар не найден');
+            return { id, name: 'Молоко', count: counts[id] };
+        },
+    });
     await ui.navigate('#product/1');
     assert.equal(ui.elements['product-card'].hidden, false);
+    assert.equal(ui.elements['product-summary'].hidden, false);
+    assert.equal(ui.elements['product-count'].textContent, (1240).toLocaleString('ru-RU'));
+    assert.equal(ui.elements['product-availability'].textContent, 'В наличии');
+    assert.equal(ui.elements['product-availability'].className, 'badge text-bg-success');
+    await ui.navigate('#product/2');
+    assert.equal(ui.elements['product-availability'].textContent, 'Нет в наличии');
+    assert.equal(ui.elements['product-availability'].className, 'badge text-bg-danger');
     await ui.navigate('#product/999');
     assert.equal(ui.elements['product-card'].hidden, true);
-    assert.match(html, /Фото: нет данных/);
-    for (const field of ['Свободное количество', 'Количество в брони', 'Срок хранения (FIFO/LIFO)', 'Физические размеры',
-        'Поставщик/производитель', 'Размер в юнитах (SKU)', 'Идентификатор товарной позиции', 'Дата поступления на склад',
-        'Распределение по складам']) {
-        assert.ok(html.includes(`<dt class="mt-3">${field}</dt><dd>Нет данных</dd>`), field);
+    assert.equal(ui.elements['product-summary'].hidden, true);
+});
+
+test('Поля карточки без данных в базе показаны честно, а не выдуманы', () => {
+    assert.match(html, /Фотография товара:<br>нет данных/);
+    for (const field of ['Поставщик', 'Производитель', 'Срок хранения \\(FIFO\\/LIFO\\)', 'Размер в юнитах \\(SKU\\)',
+        'ID товарной позиции', 'Дата поступления на склад', 'Ячейка']) {
+        assert.match(html, new RegExp(`<dt [^>]*>${field}</dt><dd [^>]*>Нет данных</dd>`), field);
     }
+    for (const field of ['Свободное количество', 'Количество в брони']) {
+        assert.match(html, new RegExp(`<p [^>]*>${field}</p>\\s*<p [^>]*>Нет данных</p>`), field);
+    }
+    for (const field of ['Длина', 'Ширина', 'Высота', 'Масса', 'Объём жидкости', 'Объём упаковки']) {
+        assert.match(html, new RegExp(`<p [^>]*>${field}</p><p [^>]*>Нет данных</p>`), field);
+    }
+    assert.doesNotMatch(html, /Распределение по складам/);
 });
 
 test('Меню заказов предлагает приёмку, а создание заказа отмечено как недоступное', () => {
