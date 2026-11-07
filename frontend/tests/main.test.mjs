@@ -9,7 +9,7 @@ const templateFiles = ['index.html', 'src/layout/layout.html', 'src/pages/home/h
 const html = (await Promise.all(templateFiles.map((file) => readFile(new URL(`../${file}`, import.meta.url), 'utf8')))).join('\n');
 const moduleFiles = ['shared/api.js', 'shared/dom.js', 'shared/icons.js', 'shared/modal.js', 'layout/layout.js',
     'pages/home/home.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'pages/receiving/receiving.js', 'pages/orders/orders.js', 'pages/order-form/order-form.js',
-    'pages/auth/auth.js', 'pages/users/users.js', 'pages/inventory/inventory.js', 'app/router.js', 'main.js'];
+    'pages/auth/auth.js', 'pages/users/users.js', 'pages/inventory/inventory-data.js', 'pages/inventory/product-search.js', 'pages/inventory/inventory-report.js', 'pages/inventory/inventory.js', 'app/router.js', 'main.js'];
 const scripts = [];
 for (const file of moduleFiles) {
     const url = new URL(`../src/${file}`, import.meta.url);
@@ -58,6 +58,7 @@ class Element {
         this.classList = {
             add: (name) => this.classes.add(name),
             remove: (name) => this.classes.delete(name),
+            contains: (name) => this.classes.has(name),
             toggle: (name, enabled) => enabled ? this.classes.add(name) : this.classes.delete(name),
         };
     }
@@ -66,8 +67,8 @@ class Element {
         listeners.push(callback);
         this.listeners.set(name, listeners);
     }
-    async fire(name) {
-        for (const callback of this.listeners.get(name) || []) await callback({ preventDefault() {} });
+    async fire(name, event = {}) {
+        for (const callback of this.listeners.get(name) || []) await callback({ target: this, preventDefault() {}, ...event });
     }
     dispatchEvent(event) { for (const callback of this.listeners.get(event.type) || []) callback(event); }
     append(...children) {
@@ -77,6 +78,13 @@ class Element {
         }
     }
     replaceChildren(...children) { this.children = children; }
+    contains(element) { return this === element || this.children.some((child) => child.contains(element)); }
+    focus() { this.focused = true; }
+    closest(selector) {
+        if (selector === 'button[data-product-id]' && this.dataset.productId !== undefined) return this;
+        if (selector === 'button[data-inventory-id]' && this.dataset.inventoryId !== undefined) return this;
+        return null;
+    }
     insertAdjacentHTML(position, content) {
         assert.equal(position, 'beforeend');
         assert.ok(content.length > 0);
@@ -87,7 +95,7 @@ class Element {
     set innerHTML(value) { throw new Error(`Небезопасный HTML: ${value}`); }
 }
 
-async function app(service = {}, hash = '#products', role = 'Менеджер') {
+async function app(service = {}, hash = '#products', role = 'Менеджер', inventoryService = {}) {
     const elements = Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id, new Element()]));
     for (const id of ['main-layout', 'auth-page']) elements[id] = new Element();
     Object.defineProperty(elements['users-body'], 'innerHTML', { set() {} });
@@ -102,7 +110,14 @@ async function app(service = {}, hash = '#products', role = 'Менеджер') 
         CreateOutgoing: async () => ({ order: shipment(), stock: [stock(1, 'Молоко', 10, 4)] }),
         CompleteOutgoing: async () => ({ order: shipment('shipped'), stock: [stock(1, 'Молоко', 6)] }),
         ...service,
-    }, AdminService: { GetUsers: async () => [] } } };
+    }, AdminService: { GetUsers: async () => [] }, InventoryService: {
+        GetDraftInventory: async () => null,
+        GetInventories: async () => [],
+        GetInventoryEmployees: async () => [],
+        CreateInventory: async () => ({ id: 1 }),
+        GetInventory: async () => inventoryDraft(),
+        ...inventoryService,
+    } } };
     let currentHash = hash;
     const location = {
         get hash() { return currentHash; },
@@ -125,18 +140,18 @@ async function app(service = {}, hash = '#products', role = 'Менеджер') 
         bootstrap: { Modal: { getOrCreateInstance: (element) => ({
             show() { element.modalOpen = true; }, hide() { element.modalOpen = false; },
         }) } },
-        document: {
+        document: Object.assign(new Element(), {
             getElementById: (id) => {
                 assert.ok(elements[id], `Элемент ${id} отсутствует в HTML`);
                 return elements[id];
             },
             createElement: () => new Element(), querySelectorAll: () => navLinks,
-        },
+        }),
     });
     vm.runInContext(main, context);
     await tick();
     return {
-        elements, navLinks, location,
+        elements, navLinks, location, document: context.document,
         async navigate(hash) { currentHash = hash; await window.fire('hashchange'); },
         async fillOrderForm(productId = '1') {
             elements['order-form-date'].value = '2026-11-20';
@@ -160,6 +175,227 @@ async function app(service = {}, hash = '#products', role = 'Менеджер') 
         },
     };
 }
+
+function inventoryDraft(items = []) {
+    return { id: 1, status: 'draft', createdAt: '2026-11-07 10:00:00', date: '', responsible: '', commission: '', kind: 'partial', items };
+}
+
+test('Кладовщик остаётся в инвентаризации и видит только её меню', async () => {
+    const ui = await app({}, '#inventory', 'Кладовщик');
+    assert.equal(ui.elements['inventory-page'].hidden, false);
+    assert.equal(ui.elements['nav-inventory'].classes.has('d-none'), false);
+    for (const id of ['nav-products', 'nav-orders', 'nav-home', 'nav-users']) {
+        assert.equal(ui.elements[id].classes.has('d-none'), true);
+    }
+    await ui.navigate('#products');
+    await tick();
+    assert.equal(ui.location.hash, '#inventory');
+    await ui.elements['btn-create-inventory'].fire('click');
+    assert.match(ui.elements['inventory-subtitle'].textContent, /ИНВ-2026-0001/);
+});
+
+test('Инвентаризация загружает по 10 товаров при открытии списка и нажатии Ещё', async () => {
+    const requests = [];
+    const products = Array.from({ length: 25 }, (_, index) => ({ id: index + 1, name: `Гвозди ${index + 1}`, count: 20 }));
+    const ui = await app({ SearchProductsPage: async (query, afterID) => {
+        requests.push([query, afterID]);
+        return { products: products.slice(afterID, afterID + 10), hasMore: afterID + 10 < products.length };
+    } }, '#inventory', 'Кладовщик', { GetDraftInventory: async () => inventoryDraft() });
+    assert.equal(requests.length, 0);
+    await ui.elements['inventory-product-search'].fire('focus');
+    assert.deepEqual(requests, [['', 0]]);
+    assert.equal(ui.elements['inventory-product-options'].children.length, 10);
+    assert.equal(ui.elements['inventory-search-results'].classes.has('show'), true);
+    assert.equal(ui.elements['inventory-product-search']['aria-expanded'], 'true');
+    await ui.elements['inventory-search-more'].fire('click');
+    assert.equal(ui.elements['inventory-product-options'].children.length, 20);
+    await ui.elements['inventory-search-more'].fire('click');
+    assert.equal(ui.elements['inventory-product-options'].children.length, 25);
+    assert.deepEqual(requests, [['', 0], ['', 10], ['', 20]]);
+    assert.equal(ui.elements['inventory-search-more'].hidden, true);
+    assert.match(html, /id="inventory-search-more"[^>]*>\s*Ещё\s*</);
+});
+
+test('Поиск инвентаризации фильтрует при вводе и сбрасывает страницу, пустой результат отличается от ошибки', async () => {
+    const requests = [];
+    const ui = await app({ SearchProductsPage: async (query, afterID) => {
+        requests.push([query, afterID]);
+        if (query === 'ошибка') throw new Error('SQLite read');
+        return { products: query === 'нет' ? [] : [product()], hasMore: false };
+    } }, '#inventory', 'Кладовщик', { GetDraftInventory: async () => inventoryDraft() });
+    const input = ui.elements['inventory-product-search'];
+    input.value = '  мол  ';
+    await input.fire('input');
+    assert.deepEqual(requests.at(-1), ['мол', 0]);
+    input.value = 'нет';
+    await input.fire('input');
+    assert.match(ui.elements['inventory-search-status'].textContent, /В базе нет товаров/);
+    input.value = 'ошибка';
+    await input.fire('input');
+    assert.match(ui.elements['inventory-search-status'].textContent, /SQLite read/);
+    assert.equal(ui.elements['inventory-product-options'].children.length, 0);
+    input.value = '';
+    await input.fire('input');
+    assert.deepEqual(requests.at(-1), ['', 0]);
+    assert.equal(ui.elements['inventory-search-status'].classes.has('text-danger'), false);
+});
+
+test('Запоздалый поиск не подменяет новый запрос и не открывает закрытый список', async () => {
+    const slow = deferred();
+    const ui = await app({ SearchProductsPage: (query) => query === 'старый' ? slow.promise : Promise.resolve({ products: [product()], hasMore: false }) },
+        '#inventory', 'Кладовщик', { GetDraftInventory: async () => inventoryDraft() });
+    const input = ui.elements['inventory-product-search'];
+    input.value = 'старый';
+    const pending = input.fire('input');
+    input.value = 'новый';
+    await input.fire('input');
+    slow.resolve({ products: [{ id: 2, name: 'Устаревший', count: 5 }], hasMore: false });
+    await pending;
+    const option = ui.elements['inventory-product-options'].children[0];
+    assert.equal(option.children[0].textContent, 'Молоко');
+    await ui.elements['inventory-product-picker'].fire('keydown', { key: 'ArrowDown', target: input });
+    assert.equal(option.focused, true);
+    await ui.elements['inventory-product-picker'].fire('keydown', { key: 'Escape' });
+    assert.equal(ui.elements['inventory-search-results'].classes.has('show'), false);
+    assert.equal(input['aria-expanded'], 'false');
+});
+
+test('Закрытый снаружи список не открывается после запоздавшего ответа базы', async () => {
+    const slow = deferred();
+    const ui = await app({ SearchProductsPage: () => slow.promise }, '#inventory', 'Кладовщик',
+        { GetDraftInventory: async () => inventoryDraft() });
+    const pending = ui.elements['inventory-product-search'].fire('focus');
+    await ui.document.fire('focusin', { target: new Element() });
+    slow.resolve({ products: [product()], hasMore: false });
+    await pending;
+    assert.equal(ui.elements['inventory-search-results'].classes.has('show'), false);
+    assert.equal(ui.elements['inventory-product-options'].children.length, 0);
+});
+
+test('Загрузка следующей порции не дублируется, после ошибки можно повторить её с того же товара', async () => {
+    const slow = deferred();
+    const requests = [];
+    const ui = await app({ SearchProductsPage: (query, afterID) => {
+        requests.push(afterID);
+        if (requests.length === 2) return slow.promise;
+        return Promise.resolve({ products: [product()], hasMore: requests.length === 1 });
+    } }, '#inventory', 'Кладовщик', { GetDraftInventory: async () => inventoryDraft() });
+    await ui.elements['inventory-product-search'].fire('focus');
+    const pending = ui.elements['inventory-search-more'].fire('click');
+    await ui.elements['inventory-search-more'].fire('click');
+    assert.deepEqual(requests, [0, 1]);
+    slow.reject(new Error('SQLite busy'));
+    await pending;
+    assert.match(ui.elements['inventory-search-status'].textContent, /SQLite busy/);
+    assert.equal(ui.elements['inventory-product-options'].children.length, 1);
+    await ui.elements['inventory-search-more'].fire('click');
+    assert.deepEqual(requests, [0, 1, 1]);
+    assert.equal(ui.elements['inventory-search-more'].hidden, true);
+});
+
+test('Выбор товара безопасен, подсчёт начинается один раз после заполнения параметров', async () => {
+    const pending = deferred();
+    const unsafe = '<img src=x onerror=alert(1)>';
+    let calls = 0;
+    let items = [];
+    const ui = await app({ SearchProductsPage: async () => ({ products: [{ id: 1, name: unsafe, count: 10 }], hasMore: false }) },
+        '#inventory', 'Кладовщик', {
+            GetDraftInventory: async () => inventoryDraft(),
+            GetInventory: async () => inventoryDraft(items),
+            PrepareInventory: async (id, request) => {
+                calls++;
+                assert.equal(id, 1);
+                assert.deepEqual(Array.from(request.productIds), [1]);
+                await pending.promise;
+                items = [{ productId: 1, productName: unsafe, systemCount: 10, actualCount: null, difference: null, comment: '' }];
+                return { ...inventoryDraft(items), ...request };
+            },
+        });
+    await ui.elements['inventory-product-search'].fire('focus');
+    const button = ui.elements['inventory-product-options'].children[0];
+    assert.equal(button.children[0].textContent, unsafe);
+    await ui.elements['inventory-product-options'].fire('click', { target: button });
+    await ui.elements['inventory-product-options'].fire('click', { target: button });
+    assert.equal(ui.elements['inventory-selection-body'].children[0].children[1].textContent, unsafe);
+    assert.equal(ui.elements['inventory-selected-count'].textContent, 'Выбрано позиций: 1');
+    assert.equal(calls, 0);
+    const started = ui.elements['inventory-start-count'].fire('click');
+    await ui.elements['inventory-start-count'].fire('click');
+    assert.equal(calls, 1);
+    pending.resolve();
+    await started;
+    assert.equal(ui.elements['inventory-items-body'].children[0].children[0].textContent, unsafe);
+    assert.equal(ui.elements['inventory-search-results'].classes.has('show'), false);
+});
+
+test('Черновик прежней версии с товарами продолжает подсчёт без потери выбранных позиций', async () => {
+    const legacy = inventoryDraft([{ productId: 1, productName: 'Гвозди', systemCount: 10, actualCount: null, difference: null, comment: '' }]);
+    const ui = await app({}, '#inventory', 'Кладовщик', { GetDraftInventory: async () => legacy });
+    assert.equal(ui.elements['inventory-counting'].hidden, false);
+    assert.equal(ui.elements['inventory-items-body'].children[0].children[0].textContent, 'Гвозди');
+});
+
+test('Подсчёт сохраняется без корректировки, сверка обновляется, подтверждение выполняется один раз', async () => {
+    let details = { ...inventoryDraft([
+        { productId: 1, productName: 'Гвозди', systemCount: 10, actualCount: null, difference: null, comment: '' },
+        { productId: 2, productName: 'Краска', systemCount: 5, actualCount: null, difference: null, comment: '' },
+    ]), date: '2026-11-07', responsible: 'Иванов И.И.', commission: 'Петров П.П.' };
+    let applies = 0, saves = 0;
+    const pending = deferred();
+    const ui = await app({}, '#inventory', 'Кладовщик', {
+        GetDraftInventory: async () => details,
+        GetInventory: async () => details,
+        SaveInventoryCounts: async (id, counts) => {
+            assert.equal(id, 1); saves++;
+            details = { ...details, items: details.items.map((item, index) => ({ ...item, ...counts[index], difference: counts[index].actualCount - item.systemCount })) };
+            return details;
+        },
+        ApplyInventory: async () => { applies++; await pending.promise; details = { ...details, status: 'completed' }; },
+    });
+    assert.equal(ui.elements['inventory-counting'].hidden, false);
+    await ui.elements['inventory-to-compare'].fire('click');
+    assert.match(ui.elements['inventory-status'].textContent, /каждого товара/);
+    assert.equal(saves, 0);
+    const rows = ui.elements['inventory-items-body'].children;
+    rows[0].children[3].children[0].value = '8';
+    rows[0].children[4].children[0].value = 'Повреждена упаковка';
+    rows[1].children[3].children[0].value = '7';
+    await ui.elements['inventory-save-counts'].fire('click');
+    assert.equal(applies, 0);
+    await ui.elements['inventory-to-compare'].fire('click');
+    assert.equal(ui.elements['inventory-reconciliation'].hidden, false);
+    assert.equal(ui.elements['inventory-summary-shortage'].textContent, '-2 шт.');
+    assert.equal(ui.elements['inventory-summary-surplus'].textContent, '+2 шт.');
+    ui.elements['inventory-comparison-body'].children[0].children[3].children[0].value = '6';
+    await ui.elements['inventory-comparison-body'].fire('change');
+    assert.equal(ui.elements['inventory-summary-shortage'].textContent, '-4 шт.');
+    await ui.elements['btn-apply-inventory'].fire('click');
+    assert.equal(ui.elements['inventory-correction-modal'].modalOpen, true);
+    assert.equal(ui.elements['inventory-correction-body'].children.length, 2);
+    assert.equal(applies, 0);
+    const completing = ui.elements['inventory-correction-confirm'].fire('click');
+    await ui.elements['inventory-correction-confirm'].fire('click');
+    assert.equal(applies, 1);
+    pending.resolve();
+    await completing;
+    assert.equal(ui.elements['inventory-report'].hidden, false);
+    assert.equal(ui.elements['inventory-report-status'].textContent, 'Инвентаризация завершена');
+    assert.match(ui.elements['inventory-report-people'].textContent, /Иванов И.И./);
+    assert.equal(ui.elements['inventory-report-total'].children[0].children[1].textContent, 15);
+    assert.equal(ui.elements['inventory-report-total'].children[0].children[2].textContent, 13);
+});
+
+test('Сохранённый акт открывается из истории после нового запуска интерфейса', async () => {
+    const details = { ...inventoryDraft([{ productId: 1, productName: '<Товар>', systemCount: 10, actualCount: 9, difference: -1, comment: 'Брак' }]), date: '2026-11-07', responsible: 'Иванов', status: 'completed' };
+    const ui = await app({}, '#inventory', 'Кладовщик', {
+        GetInventories: async () => [details], GetInventory: async () => details,
+    });
+    const button = ui.elements['inventory-history-body'].children[0].children[4].children[0];
+    await ui.elements['inventory-history-body'].fire('click', { target: button });
+    assert.equal(ui.elements['inventory-report'].hidden, false);
+    assert.equal(ui.elements['inventory-report-body'].children[0].children[1].textContent, '<Товар>');
+    assert.match(ui.elements['inventory-report-result'].textContent, /07.11.2026/);
+});
 
 test('Поиск игнорирует запоздалые ответы и безопасно выводит названия', async () => {
     const slow = deferred();

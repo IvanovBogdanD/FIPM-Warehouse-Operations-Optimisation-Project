@@ -48,6 +48,42 @@ func (s *DBService) SearchProducts(query string) ([]Product, error) {
 	return found, nil
 }
 
+type ProductPage struct {
+	Products []Product `json:"products"`
+	HasMore  bool      `json:"hasMore"`
+}
+
+func (s *DBService) SearchProductsPage(query string, afterID int) (ProductPage, error) {
+	page := ProductPage{Products: []Product{}}
+	if afterID < 0 {
+		return page, errors.New("идентификатор последнего товара не может быть отрицательным")
+	}
+	rows, err := s.db.Query("SELECT id, name, count FROM products WHERE id > ? ORDER BY id", afterID)
+	if err != nil {
+		return page, fmt.Errorf("поиск товаров: %w", err)
+	}
+	defer rows.Close()
+	query = strings.ToLower(strings.TrimSpace(query))
+	for rows.Next() {
+		var product Product
+		if err := rows.Scan(&product.ID, &product.Name, &product.Count); err != nil {
+			return page, fmt.Errorf("чтение товара: %w", err)
+		}
+		if !strings.Contains(strings.ToLower(product.Name), query) {
+			continue
+		}
+		if len(page.Products) == 10 {
+			page.HasMore = true
+			break
+		}
+		page.Products = append(page.Products, product)
+	}
+	if err := rows.Err(); err != nil {
+		return page, fmt.Errorf("чтение товаров: %w", err)
+	}
+	return page, nil
+}
+
 func (s *DBService) GetProduct(id int) (Product, error) {
 	var p Product
 	err := s.db.QueryRow("SELECT id, name, count FROM products WHERE id = ?", id).Scan(&p.ID, &p.Name, &p.Count)

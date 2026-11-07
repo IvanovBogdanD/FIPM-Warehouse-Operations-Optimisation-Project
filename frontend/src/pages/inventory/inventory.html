@@ -1,59 +1,74 @@
-<div id="inventory-page" hidden>
-  <div class="d-flex align-items-center mb-4">
-    <h4 class="mb-0">Инвентаризация</h4>
+<section id="inventory-page" aria-label="Инвентаризация" hidden>
+  <div class="row g-3 align-items-center mb-4">
+    <div class="col-xl-7"><h1 id="inventory-title" class="h3 fw-bold mb-2">Инвентаризация</h1><p id="inventory-subtitle" class="text-body-secondary mb-0"></p></div>
+    <div class="col-xl-5"><ol id="inventory-steps" class="nav nav-pills nav-fill flex-nowrap gap-1 small" aria-label="Этапы инвентаризации" hidden>
+      <li class="nav-item"><span id="inventory-step-create" class="nav-link px-2">Создание</span></li>
+      <li class="nav-item"><span id="inventory-step-count" class="nav-link px-2">Подсчёт</span></li>
+      <li class="nav-item"><span id="inventory-step-compare" class="nav-link px-2">Сверка</span></li>
+      <li class="nav-item"><span id="inventory-step-report" class="nav-link px-2">Акт</span></li>
+    </ol></div>
   </div>
-
-  <div id="inventory-empty" class="card shadow-sm border-0">
-    <div class="card-body text-center py-5">
-      <p class="text-muted mb-3">Активной инвентаризации нет.</p>
-      <button class="btn btn-primary" id="btn-create-inventory">Создать инвентаризацию</button>
-    </div>
+  <p id="inventory-status" role="status" aria-live="polite"></p>
+  <div id="inventory-empty" class="card shadow-none border">
+    <div class="card-header bg-body d-flex flex-wrap justify-content-between align-items-center gap-3 py-3"><h2 class="card-title fw-semibold mb-0">Инвентаризации</h2><button id="btn-create-inventory" type="button" class="btn btn-primary">Новая инвентаризация</button></div>
+    <div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th>Номер</th><th>Дата проведения</th><th>Проводит</th><th>Статус</th><th></th></tr></thead><tbody id="inventory-history-body"></tbody></table></div>
+    <p id="inventory-history-empty" class="text-center text-body-secondary py-5 mb-0" hidden>Инвентаризаций пока нет. Создайте первую проверку.</p>
   </div>
-
-  <div id="inventory-active" class="d-none">
-    <div class="card shadow-sm border-0">
-      <div class="card-header bg-transparent d-flex align-items-center py-3">
-        <h5 class="card-title mb-0">
-          Инвентаризация #<span id="inventory-id"></span>
-        </h5>
-        <span id="inventory-status-badge" class="badge ms-2"></span>
-      </div>
-
-      <div class="card-body">
-        <div class="row g-2 mb-3">
-          <div class="col-md-8">
-            <input type="text" class="form-control" id="inventory-product-search"
-                   placeholder="Поиск товара для добавления...">
+  <div id="inventory-active" hidden>
+    <section id="inventory-creation" class="row g-4 align-items-start" hidden>
+      <div class="col-xl-8"><div class="card shadow-none border">
+        <div class="card-header bg-body py-3">
+          <h2 class="card-title fw-semibold mb-3">Выбор товаров для проверки</h2>
+          <div id="inventory-product-picker" class="dropdown">
+            <label class="visually-hidden" for="inventory-product-search">Товар из базы</label>
+            <div class="input-group"><input id="inventory-product-search" class="form-control" type="text" autocomplete="off" placeholder="Название товара" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="inventory-product-options" aria-haspopup="listbox"><button id="inventory-product-search-btn" class="btn btn-outline-primary" type="button">Найти</button></div>
+            <div id="inventory-search-results" class="dropdown-menu top-100 start-0 mt-1 w-100 p-0 shadow">
+              <div id="inventory-product-options" class="overflow-auto" style="max-height: min(16rem, 35vh);" role="listbox" aria-label="Товары из базы"></div>
+              <div id="inventory-search-status" class="small text-body-secondary px-3 py-2" role="status" aria-live="polite"></div>
+              <button id="inventory-search-more" class="dropdown-item text-primary py-2" type="button" hidden>Ещё</button>
+            </div>
           </div>
-          <div class="col-md-4">
-            <button class="btn btn-outline-primary w-100" id="inventory-product-search-btn">Найти</button>
-          </div>
+          <p class="small text-body-secondary mb-0 mt-2">Артикулы и места хранения в базе товаров не указаны.</p>
         </div>
-
-        <div id="inventory-search-results" class="list-group mb-3"></div>
-
-        <div class="table-responsive">
-          <table class="table table-hover align-middle mb-0">
-            <thead class="table-light">
-              <tr>
-                <th>Товар</th>
-                <th class="text-end">По системе</th>
-                <th class="text-end" style="width: 160px;">Факт</th>
-                <th class="text-end">Разница</th>
-              </tr>
-            </thead>
-            <tbody id="inventory-items-body">
-              <tr><td colspan="4" class="text-center text-muted py-4">Товары не добавлены</td></tr>
-            </tbody>
-          </table>
-        </div>
+        <div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th><input id="inventory-select-all" class="form-check-input" type="checkbox" aria-label="Выбрать все показанные товары"></th><th>Товар</th><th>Артикул</th><th>Место хранения</th><th class="text-end">В системе</th></tr></thead><tbody id="inventory-selection-body"></tbody></table></div>
+        <div class="card-footer bg-body d-flex flex-wrap justify-content-between align-items-center gap-2"><span id="inventory-selected-count" class="text-body-secondary"></span><div class="d-flex gap-2"><button id="inventory-select-shown" class="btn btn-link btn-sm" type="button">Выбрать все</button><button id="inventory-clear-selection" class="btn btn-link btn-sm" type="button">Снять выбор</button></div></div>
+      </div></div>
+      <div class="col-xl-4">
+        <div class="card shadow-none border"><div class="card-body">
+          <h2 class="h5 fw-semibold mb-3">Параметры</h2>
+          <label class="form-label fw-semibold" for="inventory-date">Дата проведения <span class="text-danger">*</span></label><input id="inventory-date" class="form-control mb-3" type="date" required>
+          <label class="form-label fw-semibold" for="inventory-responsible">ФИО проводящего проверку <span class="text-danger">*</span></label><input id="inventory-responsible" class="form-control mb-3" type="text" required>
+          <label class="form-label fw-semibold" for="inventory-commission-toggle">Члены комиссии</label><div class="dropdown"><button id="inventory-commission-toggle" class="btn btn-outline-secondary dropdown-toggle text-start text-wrap w-100" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">Выберите сотрудников</button><div id="inventory-commission" class="dropdown-menu w-100 p-2"></div></div>
+          <fieldset class="border-0 p-0 mt-4"><legend class="form-label fw-semibold fs-6">Тип</legend><div class="form-check form-check-inline"><input id="inventory-kind-partial" class="form-check-input" type="radio" name="inventory-kind" value="partial" checked><label class="form-check-label" for="inventory-kind-partial">Выборочная</label></div><div class="form-check form-check-inline"><input id="inventory-kind-full" class="form-check-input" type="radio" name="inventory-kind" value="full"><label class="form-check-label" for="inventory-kind-full">Полная</label></div></fieldset>
+        </div></div>
+        <p class="alert alert-warning">На этапе подсчёта остатки не меняются. Корректировка применяется после сверки и подтверждения.</p><button id="inventory-start-count" class="btn btn-primary w-100" type="button">Начать подсчёт</button>
       </div>
-
-      <div class="card-footer bg-transparent d-flex justify-content-end">
-        <button class="btn btn-success" id="btn-apply-inventory" disabled>
-          Применить корректировку остатков
-        </button>
+    </section>
+    <section id="inventory-counting" hidden>
+      <div class="card shadow-none border"><div class="card-header bg-body py-3"><h2 class="card-title fw-semibold mb-0">Фактическое количество</h2></div><div class="table-responsive"><table class="table align-middle mb-0"><thead class="table-light"><tr><th>Товар</th><th>Место хранения</th><th class="text-end">В системе</th><th>Фактически</th><th>Комментарий</th></tr></thead><tbody id="inventory-items-body"></tbody></table></div></div>
+      <div class="d-flex flex-wrap justify-content-end gap-2"><button id="inventory-save-counts" class="btn btn-outline-secondary" type="button">Сохранить</button><button id="inventory-to-compare" class="btn btn-primary" type="button">Перейти к сверке</button></div>
+    </section>
+    <section id="inventory-reconciliation" hidden>
+      <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3"><div class="card bg-body-tertiary shadow-none h-100 mb-0"><div class="card-body"><p class="text-body-secondary">Проверено позиций</p><p id="inventory-summary-counted" class="h2 fw-bold mb-0"></p></div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card bg-success-subtle shadow-none h-100 mb-0"><div class="card-body"><p class="text-body-secondary">Совпало</p><p id="inventory-summary-matched" class="h2 fw-bold mb-0"></p></div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card bg-danger-subtle shadow-none h-100 mb-0"><div class="card-body"><p class="text-body-secondary">Недостача</p><p id="inventory-summary-shortage" class="h2 fw-bold mb-0"></p></div></div></div>
+        <div class="col-sm-6 col-xl-3"><div class="card bg-warning-subtle shadow-none h-100 mb-0"><div class="card-body"><p class="text-body-secondary">Излишек</p><p id="inventory-summary-surplus" class="h2 fw-bold mb-0"></p></div></div></div>
       </div>
-    </div>
+      <div class="card shadow-none border"><div class="table-responsive"><table class="table align-middle mb-0"><thead class="table-light"><tr><th>Товар</th><th>Место хранения</th><th class="text-end">В системе</th><th class="text-end">Фактически</th><th class="text-end">Расхождение</th><th>Результат</th><th>Комментарий</th></tr></thead><tbody id="inventory-comparison-body"></tbody></table></div><div id="inventory-total" class="card-footer bg-body text-body-secondary py-3"></div></div>
+      <div class="d-flex justify-content-end mb-3"><button id="inventory-back-count" class="btn btn-link px-0" type="button">К подсчёту</button></div><div class="row g-3 align-items-center"><div class="col-xl-5"><p class="alert alert-primary mb-0">Корректировка приведёт количество в системе к фактическому.</p></div><div class="col-xl-7 d-flex flex-wrap justify-content-xl-end gap-2"><button id="inventory-save-compare" class="btn btn-outline-secondary" type="button">Сохранить</button><button id="btn-apply-inventory" class="btn btn-primary" type="button">Скорректировать остатки</button><button id="inventory-open-report" class="btn btn-outline-secondary" type="button">Сформировать акт</button></div></div>
+    </section>
+    <section id="inventory-report" hidden>
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3"><span id="inventory-report-status" class="badge text-bg-success"></span><div class="d-flex gap-2"><button id="inventory-download-pdf" class="btn btn-outline-secondary" type="button">Скачать PDF</button><button id="inventory-print" class="btn btn-primary" type="button">Печать</button></div></div>
+      <article class="card shadow-none border rounded-0"><div class="card-body p-4 p-lg-5">
+        <div class="d-flex justify-content-between gap-3 mb-4"><p class="mb-0">ФИПМ</p><p class="text-end mb-0">УТВЕРЖДАЮ<br>Подпись ____________________</p></div><h2 id="inventory-report-title" class="h4 text-center fw-bold"></h2><p id="inventory-report-date" class="text-center"></p><p id="inventory-report-people"></p>
+        <div class="table-responsive"><table class="table table-bordered align-middle"><thead><tr><th>№</th><th>Наименование</th><th>Артикул</th><th>Место хранения</th><th>Учёт, шт.</th><th>Факт, шт.</th><th>Недостача</th><th>Излишек</th></tr></thead><tbody id="inventory-report-body"></tbody><tfoot id="inventory-report-total"></tfoot></table></div><p id="inventory-report-result" class="my-4"></p><div id="inventory-report-signatures"></div>
+      </div></article>
+    </section>
+    <button id="inventory-show-history" class="btn btn-link px-0 mt-3" type="button">Все инвентаризации</button>
   </div>
-</div>
+</section>
+<div id="inventory-correction-modal" class="modal fade" tabindex="-1" aria-labelledby="inventory-correction-title" aria-hidden="true"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">
+  <div class="modal-header"><h2 id="inventory-correction-title" class="modal-title h5"></h2></div><div class="modal-body"><p>Количество в системе будет заменено фактическим. Дата и результаты сохранятся в инвентаризации.</p><div class="table-responsive"><table class="table align-middle"><thead class="table-light"><tr><th>Товар</th><th class="text-end">Было в системе</th><th class="text-end">Станет</th><th class="text-end">Коррекция</th></tr></thead><tbody id="inventory-correction-body"></tbody></table></div><p id="inventory-correction-status" role="status" aria-live="polite"></p></div>
+  <div class="modal-footer"><button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Отмена</button><button id="inventory-correction-confirm" class="btn btn-primary" type="button">Скорректировать</button></div>
+</div></div></div>
