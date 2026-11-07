@@ -4,10 +4,12 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const templateFiles = ['index.html', 'src/layout/layout.html', 'src/pages/home/home.html',
-    'src/pages/catalog/catalog.html', 'src/pages/catalog/product.html', 'src/pages/orders/orders.html', 'src/pages/order-form/order-form.html', 'src/pages/receiving/receiving.html'];
+    'src/pages/catalog/catalog.html', 'src/pages/catalog/product.html', 'src/pages/orders/orders.html', 'src/pages/order-form/order-form.html', 'src/pages/receiving/receiving.html',
+    'src/pages/auth/auth.html', 'src/pages/users/users.html', 'src/pages/inventory/inventory.html'];
 const html = (await Promise.all(templateFiles.map((file) => readFile(new URL(`../${file}`, import.meta.url), 'utf8')))).join('\n');
 const moduleFiles = ['shared/api.js', 'shared/dom.js', 'shared/icons.js', 'shared/modal.js', 'layout/layout.js',
-    'pages/home/home.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'pages/receiving/receiving.js', 'pages/orders/orders.js', 'pages/order-form/order-form.js', 'app/router.js', 'main.js'];
+    'pages/home/home.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'pages/receiving/receiving.js', 'pages/orders/orders.js', 'pages/order-form/order-form.js',
+    'pages/auth/auth.js', 'pages/users/users.js', 'pages/inventory/inventory.js', 'app/router.js', 'main.js'];
 const scripts = [];
 for (const file of moduleFiles) {
     const url = new URL(`../src/${file}`, import.meta.url);
@@ -50,6 +52,7 @@ class Element {
         this.disabled = false;
         this.children = [];
         this.dataset = {};
+        this.style = {};
         this.listeners = new Map();
         this.classes = new Set();
         this.classList = {
@@ -84,13 +87,14 @@ class Element {
     set innerHTML(value) { throw new Error(`Небезопасный HTML: ${value}`); }
 }
 
-async function app(service = {}, hash = '#products') {
+async function app(service = {}, hash = '#products', role = 'Менеджер') {
     const elements = Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id, new Element()]));
+    for (const id of ['main-layout', 'auth-page']) elements[id] = new Element();
+    Object.defineProperty(elements['users-body'], 'innerHTML', { set() {} });
     const window = new Element();
     window.go = { main: { DBService: {
         SearchProducts: async () => [product()],
         GetAllProducts: async () => [product()],
-        GetProduct: async () => product(),
         CreateReceiving: async () => receipt(), GetReceiving: async () => receipt(),
         CompleteReceiving: async () => receipt(13, 'completed'), CancelReceiving: async () => {},
         GetOrders: async () => [], CancelOrder: async () => order('cancelled'),
@@ -98,8 +102,16 @@ async function app(service = {}, hash = '#products') {
         CreateOutgoing: async () => ({ order: shipment(), stock: [stock(1, 'Молоко', 10, 4)] }),
         CompleteOutgoing: async () => ({ order: shipment('shipped'), stock: [stock(1, 'Молоко', 6)] }),
         ...service,
-    } } };
-    const location = { hash };
+    }, AdminService: { GetUsers: async () => [] } } };
+    let currentHash = hash;
+    const location = {
+        get hash() { return currentHash; },
+        set hash(value) {
+            if (value === currentHash) return;
+            currentHash = value;
+            Promise.resolve().then(() => window.fire('hashchange'));
+        },
+    };
     elements['receiving-form'].reset = () => {
         for (const id of ['receiving-product', 'receiving-quantity', 'receiving-responsible', 'receiving-location']) elements[id].value = '';
     };
@@ -109,6 +121,7 @@ async function app(service = {}, hash = '#products') {
     const navLinks = ['#home', '#products', '#orders'].map((hash) => Object.assign(new Element(), { hash }));
     const context = vm.createContext({
         window, location, Event,
+        sessionStorage: { getItem: () => JSON.stringify({ role, firstName: 'Иван', lastName: 'Иванов' }) },
         bootstrap: { Modal: { getOrCreateInstance: (element) => ({
             show() { element.modalOpen = true; }, hide() { element.modalOpen = false; },
         }) } },
@@ -124,7 +137,7 @@ async function app(service = {}, hash = '#products') {
     await tick();
     return {
         elements, navLinks, location,
-        async navigate(hash) { location.hash = hash; await window.fire('hashchange'); },
+        async navigate(hash) { currentHash = hash; await window.fire('hashchange'); },
         async fillOrderForm(productId = '1') {
             elements['order-form-date'].value = '2026-11-20';
             elements['order-form-responsible'].value = ' Петрова А.С. ';
@@ -171,7 +184,7 @@ test('Ссылка открывает карточку с данными тов�
     const queries = [];
     const ui = await app({
         SearchProducts: async (query) => { queries.push(query); return [product()]; },
-        GetProduct: async (id) => { assert.equal(id, 1); return product(); },
+        GetProductStock: async (id) => { assert.equal(id, 1); return stock(); },
     });
     ui.elements.search.value = 'мол';
     await ui.elements.search.fire('input');
@@ -179,8 +192,9 @@ test('Ссылка открывает карточку с данными тов�
     await ui.navigate(link.href);
     assert.equal(ui.elements['catalog-page'].hidden, true);
     assert.equal(ui.elements['product-page'].hidden, false);
-    assert.deepEqual(ui.elements['product-details'].children.map((child) => child.textContent),
-        ['ID', 1, 'Название', 'Молоко', 'Количество', 10]);
+    assert.equal(ui.elements['product-name'].textContent, 'Молоко');
+    assert.equal(ui.elements['product-id'].textContent, 'ID 1');
+    assert.equal(ui.elements['product-count'].textContent, '10');
     await ui.navigate('#products');
     assert.equal(ui.elements['catalog-page'].hidden, false);
     assert.equal(ui.elements['product-page'].hidden, true);
@@ -191,13 +205,14 @@ test('Ошибки загрузки видны, обновление катал�
     let failed = true;
     const ui = await app({
         SearchProducts: async () => { if (failed) throw new Error('SQLite read'); return [product()]; },
-        GetProduct: async () => { throw new Error('товар не найден'); },
+        GetProductStock: async () => { throw new Error('товар не найден'); },
     });
     assert.match(ui.elements['catalog-status'].textContent, /SQLite read/);
     assert.equal(ui.elements['products-body'].children.length, 0);
     await ui.navigate('#product/999');
     assert.match(ui.elements['product-status'].textContent, /товар не найден/);
-    assert.equal(ui.elements['product-details'].children.length, 0);
+    assert.equal(ui.elements['product-card'].hidden, true);
+    assert.equal(ui.elements['product-summary'].hidden, true);
     failed = false;
     await ui.navigate('#products');
     await ui.elements['reload-catalog'].fire('click');
@@ -209,14 +224,14 @@ test('Ошибки загрузки видны, обновление катал�
 test('Запоздалый ответ карточки не подменяет выбранный товар', async () => {
     const slow = deferred();
     const ui = await app({
-        GetProduct: (id) => id === 1 ? slow.promise : Promise.resolve({ id: 2, name: 'Хлеб', count: 5 }),
+        GetProductStock: (id) => id === 1 ? slow.promise : Promise.resolve(stock(2, 'Хлеб', 5)),
     });
     const old = ui.navigate('#product/1');
     await ui.navigate('#product/2');
-    slow.resolve(product());
+    slow.resolve(stock());
     await old;
-    assert.deepEqual(ui.elements['product-details'].children.map((child) => child.textContent),
-        ['ID', 2, 'Название', 'Хлеб', 'Количество', 5]);
+    assert.equal(ui.elements['product-name'].textContent, 'Хлеб');
+    assert.equal(ui.elements['product-count'].textContent, '5');
 });
 
 test('Навигация не дублирует обработчики поиска и обновления', async () => {
@@ -308,23 +323,23 @@ test('Приёмка проверяет обязательные поля, от�
 for (const destination of ['#products', '#product/1', '#home']) {
     test(`Завершение приёмки обновляет открытую страницу ${destination}`, async () => {
         const completion = deferred();
-        let stock = 10;
+        let count = 10;
         const ui = await app({
-            GetAllProducts: async () => [product(stock)], SearchProducts: async () => [product(stock)],
-            GetProduct: async () => product(stock), CompleteReceiving: () => completion.promise,
+            GetAllProducts: async () => [product(count)], SearchProducts: async () => [product(count)],
+            GetProductStock: async () => stock(1, 'Молоко', count), CompleteReceiving: () => completion.promise,
         });
         await ui.draft();
         const finishing = ui.elements['complete-receiving'].fire('click');
         await ui.navigate(destination);
-        stock = 13;
-        completion.resolve(receipt(stock, 'completed'));
+        count = 13;
+        completion.resolve(receipt(count, 'completed'));
         await finishing;
         await tick();
         const shown = destination === '#products'
             ? ui.elements['products-body'].children[0].children[2].textContent
             : destination === '#home' ? ui.elements['home-total'].textContent
-                : ui.elements['product-details'].children[5].textContent;
-        assert.equal(Number(shown), stock);
+                : ui.elements['product-count'].textContent;
+        assert.equal(Number(shown), count);
     });
 }
 
@@ -386,23 +401,70 @@ test('Приёмка открывается внутри заказов и со�
     assert.equal(ui.elements['receiving-fields'].disabled, false);
 });
 
-test('Карточка показывает свободное количество и бронь, поля без данных скрыты при ошибке', async () => {
+test('Карточка показывает остатки, доли и наличие, при ошибке всё скрыто', async () => {
+    const stocks = { 1: stock(1, 'Молоко', 1240, 255), 2: stock(2, 'Хлеб', 0), 3: stock(3, 'Соль', 5, 5), 4: stock(4, 'Сахар', 2, 5) };
     const ui = await app({
-        GetProduct: async (id) => { if (id === 999) throw new Error('товар не найден'); return product(); },
-        GetProductStock: async () => stock(1, 'Молоко', 10, 3),
+        GetProductStock: async (id) => { if (!stocks[id]) throw new Error('товар не найден'); return stocks[id]; },
     });
+    const availability = () => [ui.elements['product-availability'].textContent, ui.elements['product-availability'].className];
+
     await ui.navigate('#product/1');
     assert.equal(ui.elements['product-card'].hidden, false);
-    assert.equal(ui.elements['product-free'].textContent, '7');
-    assert.equal(ui.elements['product-reserved'].textContent, '3');
+    assert.equal(ui.elements['product-summary'].hidden, false);
+    assert.equal(ui.elements['product-name'].textContent, 'Молоко');
+    assert.equal(ui.elements['product-info-name'].textContent, 'Молоко');
+    assert.equal(ui.elements['product-free'].textContent, (985).toLocaleString('ru-RU'));
+    assert.equal(ui.elements['product-reserved'].textContent, '255');
+    assert.equal(ui.elements['product-count'].textContent, (1240).toLocaleString('ru-RU'));
+    assert.equal(ui.elements['product-bar-free'].style.width, '79%');
+    assert.equal(ui.elements['product-bar-reserved'].style.width, '21%');
+    assert.equal(ui.elements['product-free-share'].textContent, 'Свободно 79%');
+    assert.equal(ui.elements['product-reserved-share'].textContent, 'В брони 21%');
+    assert.deepEqual(availability(), ['В наличии', 'badge text-bg-success']);
+    assert.equal(ui.elements['product-warning'].hidden, true);
+
+    await ui.navigate('#product/2');
+    assert.deepEqual(availability(), ['Нет в наличии', 'badge text-bg-danger']);
+    assert.equal(ui.elements['product-bar-free'].style.width, '0%');
+    assert.equal(ui.elements['product-bar-reserved'].style.width, '0%');
+
+    await ui.navigate('#product/3');
+    assert.deepEqual(availability(), ['Всё в брони', 'badge text-bg-warning']);
+    assert.equal(ui.elements['product-bar-reserved'].style.width, '100%');
+
+    await ui.navigate('#product/4');
+    assert.equal(ui.elements['product-warning'].hidden, false);
+    assert.equal(ui.elements['product-bar-reserved'].style.width, '100%');
+    assert.equal(ui.elements['product-free'].textContent, (-3).toLocaleString('ru-RU'));
+
     await ui.navigate('#product/999');
     assert.equal(ui.elements['product-card'].hidden, true);
-    assert.match(html, /Фото: нет данных/);
-    for (const field of ['Срок хранения (FIFO/LIFO)', 'Физические размеры',
-        'Поставщик/производитель', 'Размер в юнитах (SKU)', 'Идентификатор товарной позиции', 'Дата поступления на склад',
-        'Распределение по складам']) {
-        assert.ok(html.includes(`<dt class="mt-3">${field}</dt><dd>Нет данных</dd>`), field);
+    assert.equal(ui.elements['product-summary'].hidden, true);
+    assert.equal(ui.elements['product-name'].textContent, 'Карточка товара');
+    assert.match(ui.elements['product-status'].textContent, /товар не найден/);
+});
+
+test('Поля карточки без данных в базе показаны честно, а не выдуманы', () => {
+    assert.match(html, /Фотография товара:<br>нет данных/);
+    for (const field of ['Поставщик', 'Производитель', 'Срок хранения \\(FIFO\\/LIFO\\)', 'Размер в юнитах \\(SKU\\)',
+        'ID товарной позиции', 'Дата поступления на склад', 'Ячейка']) {
+        assert.match(html, new RegExp(`<dt [^>]*>${field}</dt><dd [^>]*>Нет данных</dd>`), field);
     }
+    for (const field of ['Длина', 'Ширина', 'Высота', 'Масса', 'Объём жидкости', 'Объём упаковки']) {
+        assert.match(html, new RegExp(`<p [^>]*>${field}</p><p [^>]*>Нет данных</p>`), field);
+    }
+    assert.match(html, /Распределение по складам<\/h2>\s*<p [^>]*>Нет данных<\/p>/);
+});
+
+test('Администратор не попадает на создание заказа по ссылкам главной', async () => {
+    const ui = await app({}, '#orders/new', 'Администратор');
+    await tick();
+    assert.equal(ui.location.hash, '#users');
+    assert.equal(ui.elements['users-page'].hidden, false);
+    assert.equal(ui.elements['order-form-page'].hidden, true);
+    await ui.navigate('#orders/new/writeoff');
+    await tick();
+    assert.equal(ui.location.hash, '#users');
 });
 
 test('Меню заказов предлагает создание заказа и приёмку', () => {
