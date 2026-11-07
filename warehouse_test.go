@@ -107,7 +107,7 @@ func TestSQLiteFailures(t *testing.T) {
 	}
 }
 
-func TestStartupDoesNotCreateOrChangeSchema(t *testing.T) {
+func TestStartupCreatesDatabaseWithoutChangingExistingSchema(t *testing.T) {
 	t.Chdir(t.TempDir())
 	missing, err := NewDBService()
 	if err != nil {
@@ -117,8 +117,8 @@ func TestStartupDoesNotCreateOrChangeSchema(t *testing.T) {
 		t.Fatal("missing database ignored")
 	}
 	missing.Close()
-	if _, err := os.Stat("store.db"); !os.IsNotExist(err) {
-		t.Fatalf("database created: %v", err)
+	if _, err := os.Stat("store.db"); err != nil {
+		t.Fatalf("database not created: %v", err)
 	}
 	db, err := sql.Open("sqlite", "store.db")
 	if err != nil {

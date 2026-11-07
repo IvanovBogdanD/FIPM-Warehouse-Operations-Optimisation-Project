@@ -44,6 +44,9 @@ func main() {
 		},
 
 		BackgroundColour: &options.RGBA{R: 248, G: 249, B: 250, A: 1},
+		OnStartup: func(ctx context.Context) {
+			inventoryService.ctx = ctx
+		},
 
 		// Регистрация сервиса через Bind
 		Bind: []interface{}{

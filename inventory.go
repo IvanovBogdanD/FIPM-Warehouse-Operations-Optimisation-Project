@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 type InventoryService struct {
-	db *sql.DB
+	db  *sql.DB
+	ctx context.Context
 }
 
 func NewInventoryService(db *sql.DB) *InventoryService {
@@ -50,6 +53,23 @@ func (i *InventoryService) InitSchema() error {
 	if err != nil {
 		return fmt.Errorf("create inventory_items index: %w", err)
 	}
+	for _, column := range []struct{ table, name, definition string }{
+		{"inventories", "inventory_date", "TEXT NOT NULL DEFAULT ''"},
+		{"inventories", "responsible", "TEXT NOT NULL DEFAULT ''"},
+		{"inventories", "commission", "TEXT NOT NULL DEFAULT ''"},
+		{"inventories", "kind", "TEXT NOT NULL DEFAULT 'partial'"},
+		{"inventory_items", "comment", "TEXT NOT NULL DEFAULT ''"},
+	} {
+		var count int
+		if err := i.db.QueryRow("SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?", column.table, column.name).Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			if _, err := i.db.Exec("ALTER TABLE " + column.table + " ADD COLUMN " + column.name + " " + column.definition); err != nil {
+				return fmt.Errorf("добавление поля инвентаризации %s: %w", column.name, err)
+			}
+		}
+	}
 
 	return nil
 }
@@ -59,6 +79,10 @@ type Inventory struct {
 	Status      string `json:"status"`
 	CreatedAt   string `json:"createdAt"`
 	CompletedAt string `json:"completedAt"`
+	Date        string `json:"date"`
+	Responsible string `json:"responsible"`
+	Commission  string `json:"commission"`
+	Kind        string `json:"kind"`
 }
 
 type InventoryItem struct {
@@ -67,6 +91,7 @@ type InventoryItem struct {
 	SystemCount int    `json:"systemCount"`
 	ActualCount *int   `json:"actualCount"`
 	Difference  *int   `json:"difference"`
+	Comment     string `json:"comment"`
 }
 
 type InventoryDetails struct {
@@ -91,10 +116,10 @@ func (i *InventoryService) CreateInventory() (Inventory, error) {
 func (i *InventoryService) getInventory(id int) (Inventory, error) {
 	var inv Inventory
 	err := i.db.QueryRow(`
-		SELECT id, status, created_at, COALESCE(completed_at, '')
+		SELECT id, status, created_at, COALESCE(completed_at, ''), inventory_date, responsible, commission, kind
 		FROM inventories
 		WHERE id = ?
-	`, id).Scan(&inv.ID, &inv.Status, &inv.CreatedAt, &inv.CompletedAt)
+	`, id).Scan(&inv.ID, &inv.Status, &inv.CreatedAt, &inv.CompletedAt, &inv.Date, &inv.Responsible, &inv.Commission, &inv.Kind)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return inv, errors.New("inventory not found")
@@ -163,7 +188,7 @@ func (i *InventoryService) GetInventory(inventoryID int) (InventoryDetails, erro
 	}
 
 	rows, err := i.db.Query(`
-		SELECT ii.product_id, p.name, ii.system_count, ii.actual_count
+		SELECT ii.product_id, p.name, ii.system_count, ii.actual_count, ii.comment
 		FROM inventory_items ii
 		JOIN products p ON p.id = ii.product_id
 		WHERE ii.inventory_id = ?
@@ -183,7 +208,7 @@ func (i *InventoryService) GetInventory(inventoryID int) (InventoryDetails, erro
 		var item InventoryItem
 		var actual sql.NullInt64
 
-		err := rows.Scan(&item.ProductID, &item.ProductName, &item.SystemCount, &actual)
+		err := rows.Scan(&item.ProductID, &item.ProductName, &item.SystemCount, &actual, &item.Comment)
 		if err != nil {
 			return InventoryDetails{}, fmt.Errorf("scan inventory item: %w", err)
 		}
@@ -233,6 +258,135 @@ func (i *InventoryService) SetActualCount(inventoryID int, productID int, actual
 	}
 
 	return nil
+}
+
+type InventoryParameters struct {
+	Date        string `json:"date"`
+	Responsible string `json:"responsible"`
+	Commission  string `json:"commission"`
+	Kind        string `json:"kind"`
+	ProductIDs  []int  `json:"productIds"`
+}
+
+type InventoryCount struct {
+	ProductID   int    `json:"productId"`
+	ActualCount *int   `json:"actualCount"`
+	Comment     string `json:"comment"`
+}
+
+func (i *InventoryService) SaveInventoryCounts(id int, counts []InventoryCount) (InventoryDetails, error) {
+	tx, err := i.db.Begin()
+	if err != nil {
+		return InventoryDetails{}, err
+	}
+	defer tx.Rollback()
+	for _, item := range counts {
+		if item.ActualCount != nil && *item.ActualCount < 0 {
+			return InventoryDetails{}, errors.New("фактическое количество не может быть отрицательным")
+		}
+		result, err := tx.Exec(`UPDATE inventory_items SET actual_count=?,comment=? WHERE inventory_id=? AND product_id=?
+			AND EXISTS(SELECT 1 FROM inventories WHERE id=? AND status='draft')`, item.ActualCount, strings.TrimSpace(item.Comment), id, item.ProductID, id)
+		if err != nil {
+			return InventoryDetails{}, err
+		}
+		changed, err := result.RowsAffected()
+		if err != nil {
+			return InventoryDetails{}, err
+		}
+		if changed == 0 {
+			return InventoryDetails{}, errors.New("позиция не найдена или инвентаризация завершена")
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return InventoryDetails{}, err
+	}
+	return i.GetInventory(id)
+}
+
+func (i *InventoryService) PrepareInventory(id int, request InventoryParameters) (InventoryDetails, error) {
+	if _, err := parseOrderDate(request.Date); err != nil {
+		return InventoryDetails{}, err
+	}
+	request.Responsible = strings.TrimSpace(request.Responsible)
+	if request.Responsible == "" {
+		return InventoryDetails{}, errors.New("укажите ФИО сотрудника")
+	}
+	if request.Kind != "partial" && request.Kind != "full" {
+		return InventoryDetails{}, errors.New("выберите тип инвентаризации")
+	}
+	if request.Kind == "partial" && len(request.ProductIDs) == 0 {
+		return InventoryDetails{}, errors.New("выберите товары для проверки")
+	}
+	tx, err := i.db.Begin()
+	if err != nil {
+		return InventoryDetails{}, err
+	}
+	defer tx.Rollback()
+	var status string
+	if err := tx.QueryRow("SELECT status FROM inventories WHERE id=?", id).Scan(&status); err != nil {
+		return InventoryDetails{}, err
+	}
+	if status != "draft" {
+		return InventoryDetails{}, errors.New("инвентаризация уже завершена")
+	}
+	var counted int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM inventory_items WHERE inventory_id=? AND actual_count IS NOT NULL", id).Scan(&counted); err != nil {
+		return InventoryDetails{}, err
+	}
+	if counted > 0 {
+		return InventoryDetails{}, errors.New("подсчёт уже начат, состав инвентаризации сохранён")
+	}
+	if _, err := tx.Exec("DELETE FROM inventory_items WHERE inventory_id=?", id); err != nil {
+		return InventoryDetails{}, err
+	}
+	if request.Kind == "full" {
+		if _, err := tx.Exec("INSERT INTO inventory_items(inventory_id,product_id,system_count) SELECT ?,id,count FROM products", id); err != nil {
+			return InventoryDetails{}, err
+		}
+	} else {
+		for _, productID := range request.ProductIDs {
+			result, err := tx.Exec("INSERT INTO inventory_items(inventory_id,product_id,system_count) SELECT ?,id,count FROM products WHERE id=?", id, productID)
+			if err != nil {
+				return InventoryDetails{}, err
+			}
+			added, err := result.RowsAffected()
+			if err != nil {
+				return InventoryDetails{}, err
+			}
+			if added == 0 {
+				return InventoryDetails{}, fmt.Errorf("товар %d не найден", productID)
+			}
+		}
+	}
+	if _, err := tx.Exec("UPDATE inventories SET inventory_date=?,responsible=?,commission=?,kind=? WHERE id=?", request.Date, request.Responsible, strings.TrimSpace(request.Commission), request.Kind, id); err != nil {
+		return InventoryDetails{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return InventoryDetails{}, err
+	}
+	return i.GetInventory(id)
+}
+
+type InventoryEmployee struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+func (i *InventoryService) GetInventoryEmployees() ([]InventoryEmployee, error) {
+	rows, err := i.db.Query("SELECT id,trim(last_name || ' ' || first_name || ' ' || COALESCE(middle_name,'')) FROM users WHERE is_approved=1 ORDER BY last_name,first_name")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	employees := []InventoryEmployee{}
+	for rows.Next() {
+		var employee InventoryEmployee
+		if err := rows.Scan(&employee.ID, &employee.Name); err != nil {
+			return nil, err
+		}
+		employees = append(employees, employee)
+	}
+	return employees, rows.Err()
 }
 
 func (i *InventoryService) ApplyInventory(inventoryID int) error {
@@ -331,4 +485,21 @@ func (i *InventoryService) GetDraftInventory() (*InventoryDetails, error) {
 		return nil, err
 	}
 	return &details, nil
+}
+
+func (i *InventoryService) GetInventories() ([]Inventory, error) {
+	rows, err := i.db.Query(`SELECT id,status,created_at,COALESCE(completed_at,''),inventory_date,responsible,commission,kind FROM inventories ORDER BY id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	inventories := []Inventory{}
+	for rows.Next() {
+		var inventory Inventory
+		if err := rows.Scan(&inventory.ID, &inventory.Status, &inventory.CreatedAt, &inventory.CompletedAt, &inventory.Date, &inventory.Responsible, &inventory.Commission, &inventory.Kind); err != nil {
+			return nil, err
+		}
+		inventories = append(inventories, inventory)
+	}
+	return inventories, rows.Err()
 }
