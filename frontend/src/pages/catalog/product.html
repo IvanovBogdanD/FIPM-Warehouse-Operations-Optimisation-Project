@@ -1,29 +1,86 @@
-<section id="product-page" class="card" hidden>
-        <div class="card-header"><h2 class="card-title">Карточка товара</h2></div>
-        <div class="card-body">
-          <p id="product-status" role="status"></p>
-          <div id="product-card" class="row g-4 mb-3" hidden>
-            <div class="col-md-4">
-              <div class="ratio ratio-4x3 bg-body-secondary rounded">
-                <div class="d-flex align-items-center justify-content-center text-body-secondary">Фото: нет данных</div>
-              </div>
+<section id="product-page" aria-label="Карточка товара" hidden>
+  <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+    <div>
+      <h1 id="product-name" class="h3 fw-bold text-break mb-1">Карточка товара</h1>
+      <p id="product-summary" class="text-body-secondary mb-0" hidden><span id="product-id"></span> · <span id="product-availability"></span></p>
+    </div>
+    <a href="#products" class="btn btn-outline-secondary text-nowrap">К каталогу</a>
+  </div>
+  <p id="product-status" role="status" aria-live="polite"></p>
+
+  <div id="product-card" hidden>
+    <div class="row g-4 mb-4">
+      <div class="col-lg-4">
+        <section class="card shadow-none border h-100 mb-0">
+          <div class="card-body">
+            <div class="ratio ratio-4x3 bg-body-secondary rounded mb-2">
+              <div class="d-flex align-items-center justify-content-center text-body-secondary text-center">Фотография товара:<br>нет данных</div>
             </div>
-            <div class="col-md-8">
-              <dl id="product-details"></dl>
-              <dl>
-                <dt class="mt-3">Свободное количество</dt><dd>Нет данных</dd>
-                <dt class="mt-3">Количество в брони</dt><dd>Нет данных</dd>
-                <dt class="mt-3">Срок хранения (FIFO/LIFO)</dt><dd>Нет данных</dd>
-                <dt class="mt-3">Физические размеры</dt><dd>Нет данных</dd>
-                <dt class="mt-3">Поставщик/производитель</dt><dd>Нет данных</dd>
-                <dt class="mt-3">Размер в юнитах (SKU)</dt><dd>Нет данных</dd>
-                <dt class="mt-3">Идентификатор товарной позиции</dt><dd>Нет данных</dd>
-                <dt class="mt-3">Дата поступления на склад</dt><dd>Нет данных</dd>
-                <dt class="mt-3">Распределение по складам</dt><dd>Нет данных</dd>
-              </dl>
-              <p class="text-body-secondary mb-0">В существующей базе есть только ID, название и количество товара.</p>
+            <div class="row g-2" aria-hidden="true">
+              <div class="col-3"><div class="ratio ratio-4x3 bg-body-secondary rounded border border-2 border-primary"></div></div>
+              <div class="col-3"><div class="ratio ratio-4x3 bg-body-secondary rounded"></div></div>
+              <div class="col-3"><div class="ratio ratio-4x3 bg-body-secondary rounded"></div></div>
+              <div class="col-3"><div class="ratio ratio-4x3 bg-body-secondary rounded"></div></div>
             </div>
           </div>
-          <a href="#products" class="btn btn-outline-secondary">К каталогу</a>
+        </section>
+      </div>
+
+      <div class="col-lg-8">
+        <section class="card shadow-none border h-100 mb-0">
+          <div class="card-body">
+            <h2 class="h6 fw-semibold mb-3">Остатки</h2>
+            <div class="row g-3 mb-4">
+              <div class="col-md-4">
+                <div class="bg-body-secondary rounded p-3 h-100">
+                  <p class="small text-body-secondary mb-1">Количество товара</p>
+                  <p class="mb-0"><strong id="product-count" class="fs-3"></strong> <span class="text-body-secondary">шт.</span></p>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="bg-success-subtle rounded p-3 h-100">
+                  <p class="small text-success-emphasis mb-1">Свободное количество</p>
+                  <p class="fs-5 fw-semibold text-success-emphasis mb-0">Нет данных</p>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="bg-warning-subtle rounded p-3 h-100">
+                  <p class="small text-warning-emphasis mb-1">Количество в брони</p>
+                  <p class="fs-5 fw-semibold text-warning-emphasis mb-0">Нет данных</p>
+                </div>
+              </div>
+            </div>
+
+            <h2 class="h6 fw-semibold mb-2">Информация о товаре</h2>
+            <div class="row gx-5">
+              <div class="col-md-6"><dl class="d-flex justify-content-between gap-3 py-2 border-bottom mb-0"><dt class="fw-normal text-body-secondary">Наименование</dt><dd id="product-info-name" class="fw-semibold text-end text-break mb-0"></dd></dl></div>
+              <div class="col-md-6"><dl class="d-flex justify-content-between gap-3 py-2 border-bottom mb-0"><dt class="fw-normal text-body-secondary">Поставщик</dt><dd class="fw-semibold text-end text-nowrap mb-0">Нет данных</dd></dl></div>
+              <div class="col-md-6"><dl class="d-flex justify-content-between gap-3 py-2 border-bottom mb-0"><dt class="fw-normal text-body-secondary">Производитель</dt><dd class="fw-semibold text-end text-nowrap mb-0">Нет данных</dd></dl></div>
+              <div class="col-md-6"><dl class="d-flex justify-content-between gap-3 py-2 border-bottom mb-0"><dt class="fw-normal text-body-secondary">Срок хранения (FIFO/LIFO)</dt><dd class="fw-semibold text-end text-nowrap mb-0">Нет данных</dd></dl></div>
+              <div class="col-md-6"><dl class="d-flex justify-content-between gap-3 py-2 border-bottom mb-0"><dt class="fw-normal text-body-secondary">Размер в юнитах (SKU)</dt><dd class="fw-semibold text-end text-nowrap mb-0">Нет данных</dd></dl></div>
+              <div class="col-md-6"><dl class="d-flex justify-content-between gap-3 py-2 border-bottom mb-0"><dt class="fw-normal text-body-secondary">Дата поступления на склад</dt><dd class="fw-semibold text-end text-nowrap mb-0">Нет данных</dd></dl></div>
+              <div class="col-md-6"><dl class="d-flex justify-content-between gap-3 py-2 border-bottom mb-0"><dt class="fw-normal text-body-secondary">ID товарной позиции</dt><dd class="fw-semibold text-end text-nowrap mb-0">Нет данных</dd></dl></div>
+              <div class="col-md-6"><dl class="d-flex justify-content-between gap-3 py-2 border-bottom mb-0"><dt class="fw-normal text-body-secondary">Ячейка</dt><dd class="fw-semibold text-end text-nowrap mb-0">Нет данных</dd></dl></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <section class="card shadow-none border mb-3">
+      <div class="card-body">
+        <h2 class="h6 fw-semibold mb-3">Физические размеры (1 шт.)</h2>
+        <div class="row row-cols-2 row-cols-md-3 row-cols-xl-6 g-2">
+          <div class="col"><div class="border rounded text-center p-3 h-100"><p class="small text-body-secondary mb-1">Длина</p><p class="fw-semibold mb-0">Нет данных</p></div></div>
+          <div class="col"><div class="border rounded text-center p-3 h-100"><p class="small text-body-secondary mb-1">Ширина</p><p class="fw-semibold mb-0">Нет данных</p></div></div>
+          <div class="col"><div class="border rounded text-center p-3 h-100"><p class="small text-body-secondary mb-1">Высота</p><p class="fw-semibold mb-0">Нет данных</p></div></div>
+          <div class="col"><div class="border rounded text-center p-3 h-100"><p class="small text-body-secondary mb-1">Масса</p><p class="fw-semibold mb-0">Нет данных</p></div></div>
+          <div class="col"><div class="border rounded text-center p-3 h-100"><p class="small text-body-secondary mb-1">Объём жидкости</p><p class="fw-semibold mb-0">Нет данных</p></div></div>
+          <div class="col"><div class="border rounded text-center p-3 h-100"><p class="small text-body-secondary mb-1">Объём упаковки</p><p class="fw-semibold mb-0">Нет данных</p></div></div>
         </div>
-      </section>
+      </div>
+    </section>
+
+    <p class="small text-body-secondary mb-0">В существующей базе есть только ID, название и количество товара.</p>
+  </div>
+</section>
