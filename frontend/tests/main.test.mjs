@@ -229,7 +229,7 @@ test('Поиск инвентаризации фильтрует при ввод
     assert.deepEqual(requests.at(-1), ['мол', 0]);
     input.value = 'нет';
     await input.fire('input');
-    assert.match(ui.elements['inventory-search-status'].textContent, /В базе нет товаров/);
+    assert.match(ui.elements['inventory-search-status'].textContent, /товары не найдены/);
     input.value = 'ошибка';
     await input.fire('input');
     assert.match(ui.elements['inventory-search-status'].textContent, /SQLite read/);
@@ -298,7 +298,7 @@ test('Выбор товара безопасен, подсчёт начинае�
     const unsafe = '<img src=x onerror=alert(1)>';
     let calls = 0;
     let items = [];
-    const ui = await app({ SearchProductsPage: async () => ({ products: [{ id: 1, name: unsafe, count: 10 }], hasMore: false }) },
+    const ui = await app({ SearchProductsPage: async () => ({ products: [{ id: 1, name: unsafe, count: 10, article: 'ART-1', storageLocation: 'A-01-01-1' }], hasMore: false }) },
         '#inventory', 'Кладовщик', {
             GetDraftInventory: async () => inventoryDraft(),
             GetInventory: async () => inventoryDraft(items),
@@ -317,6 +317,8 @@ test('Выбор товара безопасен, подсчёт начинае�
     await ui.elements['inventory-product-options'].fire('click', { target: button });
     await ui.elements['inventory-product-options'].fire('click', { target: button });
     assert.equal(ui.elements['inventory-selection-body'].children[0].children[1].textContent, unsafe);
+    assert.equal(ui.elements['inventory-selection-body'].children[0].children[2].textContent, 'ART-1');
+    assert.equal(ui.elements['inventory-selection-body'].children[0].children[3].textContent, 'A-01-01-1');
     assert.equal(ui.elements['inventory-selected-count'].textContent, 'Выбрано позиций: 1');
     assert.equal(calls, 0);
     const started = ui.elements['inventory-start-count'].fire('click');
@@ -386,7 +388,7 @@ test('Подсчёт сохраняется без корректировки, �
 });
 
 test('Сохранённый акт открывается из истории после нового запуска интерфейса', async () => {
-    const details = { ...inventoryDraft([{ productId: 1, productName: '<Товар>', systemCount: 10, actualCount: 9, difference: -1, comment: 'Брак' }]), date: '2026-11-07', responsible: 'Иванов', status: 'completed' };
+    const details = { ...inventoryDraft([{ productId: 1, productName: '<Товар>', article: 'ART-1', storageLocation: 'A-01-01-1', systemCount: 10, actualCount: 9, difference: -1, comment: 'Брак' }]), date: '2026-11-07', responsible: 'Иванов', status: 'completed' };
     const ui = await app({}, '#inventory', 'Кладовщик', {
         GetInventories: async () => [details], GetInventory: async () => details,
     });
@@ -394,6 +396,8 @@ test('Сохранённый акт открывается из истории �
     await ui.elements['inventory-history-body'].fire('click', { target: button });
     assert.equal(ui.elements['inventory-report'].hidden, false);
     assert.equal(ui.elements['inventory-report-body'].children[0].children[1].textContent, '<Товар>');
+    assert.equal(ui.elements['inventory-report-body'].children[0].children[2].textContent, 'ART-1');
+    assert.equal(ui.elements['inventory-report-body'].children[0].children[3].textContent, 'A-01-01-1');
     assert.match(ui.elements['inventory-report-result'].textContent, /07.11.2026/);
 });
 
@@ -680,16 +684,19 @@ test('Карточка показывает остатки, доли и нали
     assert.match(ui.elements['product-status'].textContent, /товар не найден/);
 });
 
-test('Поля карточки без данных в базе показаны честно, а не выдуманы', () => {
+test('Карточка отображает характеристики SQLite и отмечает демонстрационные данные', async () => {
+    const ui = await app({ GetProductStock: async () => ({ ...stock(), article: 'ART-1', sku: 'FIPM-1', supplier: '<Поставщик>', manufacturer: 'КрепёжСтрой', warehouse: 'MSK-01', storageLocation: 'A-01-01-1', receivedOn: '2026-10-01', expiresOn: '', rotation: 'LIFO', lengthMm: 140, widthMm: 100, heightMm: 70, weightKg: 1, liquidVolumeL: 0, packageVolumeL: 0.98, unitsPerPackage: 1, demoData: true }) }, '#product/1');
+    assert.equal(ui.elements['product-article'].textContent, 'ART-1');
+    assert.equal(ui.elements['product-supplier'].textContent, '<Поставщик>');
+    assert.equal(ui.elements['product-location'].textContent, 'A-01-01-1');
+    assert.equal(ui.elements['product-warehouse'].textContent, 'MSK-01');
+    assert.equal(ui.elements['product-sku'].textContent, 'FIPM-1 · 1 ед.');
+    assert.equal(ui.elements['product-received-on'].textContent, '01.10.2026');
+    assert.equal(ui.elements['product-storage'].textContent, 'Без ограничения срока · LIFO');
+    assert.equal(ui.elements['product-length'].textContent, '140 мм');
+    assert.equal(ui.elements['product-liquid-volume'].textContent, 'Не применяется');
+    assert.equal(ui.elements['product-demo-note'].hidden, false);
     assert.match(html, /Фотография товара:<br>нет данных/);
-    for (const field of ['Поставщик', 'Производитель', 'Срок хранения \\(FIFO\\/LIFO\\)', 'Размер в юнитах \\(SKU\\)',
-        'ID товарной позиции', 'Дата поступления на склад', 'Ячейка']) {
-        assert.match(html, new RegExp(`<dt [^>]*>${field}</dt><dd [^>]*>Нет данных</dd>`), field);
-    }
-    for (const field of ['Длина', 'Ширина', 'Высота', 'Масса', 'Объём жидкости', 'Объём упаковки']) {
-        assert.match(html, new RegExp(`<p [^>]*>${field}</p><p [^>]*>Нет данных</p>`), field);
-    }
-    assert.doesNotMatch(html, /Распределение по складам/);
 });
 
 test('Администратор не попадает на создание заказа по ссылкам главной', async () => {

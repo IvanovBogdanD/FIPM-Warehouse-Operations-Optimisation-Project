@@ -21,14 +21,13 @@
           <h2 class="card-title fw-semibold mb-3">Выбор товаров для проверки</h2>
           <div id="inventory-product-picker" class="dropdown">
             <label class="visually-hidden" for="inventory-product-search">Товар из базы</label>
-            <div class="input-group"><input id="inventory-product-search" class="form-control" type="text" autocomplete="off" placeholder="Название товара" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="inventory-product-options" aria-haspopup="listbox"><button id="inventory-product-search-btn" class="btn btn-outline-primary" type="button">Найти</button></div>
+            <div class="input-group"><input id="inventory-product-search" class="form-control" type="text" autocomplete="off" placeholder="Название, артикул или SKU" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="inventory-product-options" aria-haspopup="listbox"><button id="inventory-product-search-btn" class="btn btn-outline-primary" type="button">Найти</button></div>
             <div id="inventory-search-results" class="dropdown-menu top-100 start-0 mt-1 w-100 p-0 shadow">
               <div id="inventory-product-options" class="overflow-auto" style="max-height: min(16rem, 35vh);" role="listbox" aria-label="Товары из базы"></div>
               <div id="inventory-search-status" class="small text-body-secondary px-3 py-2" role="status" aria-live="polite"></div>
               <button id="inventory-search-more" class="dropdown-item text-primary py-2" type="button" hidden>Ещё</button>
             </div>
           </div>
-          <p class="small text-body-secondary mb-0 mt-2">Артикулы и места хранения в базе товаров не указаны.</p>
         </div>
         <div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-light"><tr><th><input id="inventory-select-all" class="form-check-input" type="checkbox" aria-label="Выбрать все показанные товары"></th><th>Товар</th><th>Артикул</th><th>Место хранения</th><th class="text-end">В системе</th></tr></thead><tbody id="inventory-selection-body"></tbody></table></div>
         <div class="card-footer bg-body d-flex flex-wrap justify-content-between align-items-center gap-2"><span id="inventory-selected-count" class="text-body-secondary"></span><div class="d-flex gap-2"><button id="inventory-select-shown" class="btn btn-link btn-sm" type="button">Выбрать все</button><button id="inventory-clear-selection" class="btn btn-link btn-sm" type="button">Снять выбор</button></div></div>

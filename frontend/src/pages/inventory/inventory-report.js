@@ -14,7 +14,7 @@ export function renderInventoryReport(details) {
     details.items.forEach((item, index) => {
         const difference = item.actualCount - item.systemCount;
         const row = document.createElement('tr');
-        for (const value of [index + 1, item.productName, '-', '-', item.systemCount, item.actualCount, difference < 0 ? -difference : '-', difference > 0 ? difference : '-']) {
+        for (const value of [index + 1, item.productName, item.article || '-', item.storageLocation || '-', item.systemCount, item.actualCount, difference < 0 ? -difference : '-', difference > 0 ? difference : '-']) {
             const cell = document.createElement('td'); cell.textContent = value; row.append(cell);
         }
         body.append(row);

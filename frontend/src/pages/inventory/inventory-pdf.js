@@ -37,7 +37,7 @@ export function createInventoryPDF(details, font) {
     drawRow(header);
     details.items.forEach((item, index) => {
         const difference = item.actualCount - item.systemCount;
-        drawRow([index + 1, item.productName, '-', '-', item.systemCount, item.actualCount, difference < 0 ? -difference : '-', difference > 0 ? difference : '-']);
+        drawRow([index + 1, item.productName, item.article || '-', item.storageLocation || '-', item.systemCount, item.actualCount, difference < 0 ? -difference : '-', difference > 0 ? difference : '-']);
     });
     drawRow(['', 'Итого', '', '', totals.system, totals.actual, totals.shortage, totals.surplus]);
     y += 10;

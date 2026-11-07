@@ -22,7 +22,11 @@ func testStore(t *testing.T) (*DBService, string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return &DBService{db: db}, path
+	service := &DBService{db: db}
+	if err := service.InitProducts(); err != nil {
+		t.Fatal(err)
+	}
+	return service, path
 }
 
 func schema(t *testing.T, db *sql.DB) string {

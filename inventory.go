@@ -86,12 +86,14 @@ type Inventory struct {
 }
 
 type InventoryItem struct {
-	ProductID   int    `json:"productId"`
-	ProductName string `json:"productName"`
-	SystemCount int    `json:"systemCount"`
-	ActualCount *int   `json:"actualCount"`
-	Difference  *int   `json:"difference"`
-	Comment     string `json:"comment"`
+	ProductID       int    `json:"productId"`
+	ProductName     string `json:"productName"`
+	Article         string `json:"article"`
+	StorageLocation string `json:"storageLocation"`
+	SystemCount     int    `json:"systemCount"`
+	ActualCount     *int   `json:"actualCount"`
+	Difference      *int   `json:"difference"`
+	Comment         string `json:"comment"`
 }
 
 type InventoryDetails struct {
@@ -188,7 +190,7 @@ func (i *InventoryService) GetInventory(inventoryID int) (InventoryDetails, erro
 	}
 
 	rows, err := i.db.Query(`
-		SELECT ii.product_id, p.name, ii.system_count, ii.actual_count, ii.comment
+		SELECT ii.product_id, p.name, ii.system_count, ii.actual_count, ii.comment, p.article, p.storage_location
 		FROM inventory_items ii
 		JOIN products p ON p.id = ii.product_id
 		WHERE ii.inventory_id = ?
@@ -208,7 +210,7 @@ func (i *InventoryService) GetInventory(inventoryID int) (InventoryDetails, erro
 		var item InventoryItem
 		var actual sql.NullInt64
 
-		err := rows.Scan(&item.ProductID, &item.ProductName, &item.SystemCount, &actual, &item.Comment)
+		err := rows.Scan(&item.ProductID, &item.ProductName, &item.SystemCount, &actual, &item.Comment, &item.Article, &item.StorageLocation)
 		if err != nil {
 			return InventoryDetails{}, fmt.Errorf("scan inventory item: %w", err)
 		}

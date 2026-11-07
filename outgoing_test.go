@@ -82,7 +82,7 @@ func TestOutgoingReservesWithoutChangingStock(t *testing.T) {
 	if !reflect.DeepEqual(order.Items, wantItems) {
 		t.Fatalf("items=%+v", order.Items)
 	}
-	wantStock := []ProductStock{{ID: 1, Name: "Молоко", Count: 10, Reserved: 4, Free: 6}, {ID: 2, Name: "Хлеб", Count: 5, Reserved: 2, Free: 3}}
+	wantStock := []ProductStock{{Product: Product{ID: 1, Name: "Молоко", Count: 10}, Reserved: 4, Free: 6}, {Product: Product{ID: 2, Name: "Хлеб", Count: 5}, Reserved: 2, Free: 3}}
 	if !reflect.DeepEqual(result.Stock, wantStock) {
 		t.Fatalf("stock=%+v", result.Stock)
 	}
@@ -122,7 +122,7 @@ func TestOutgoingShipmentWritesOffAndClearsReservation(t *testing.T) {
 	if order.Status != "shipped" || order.CompletedBy != "Кузнецов Р.Н." || order.ShipmentDate.Format("2006-01-02") != "2026-11-21" {
 		t.Fatalf("order=%+v", order)
 	}
-	wantStock := []ProductStock{{ID: 1, Name: "Молоко", Count: 6, Free: 6}, {ID: 2, Name: "Хлеб", Count: 3, Free: 3}}
+	wantStock := []ProductStock{{Product: Product{ID: 1, Name: "Молоко", Count: 6}, Free: 6}, {Product: Product{ID: 2, Name: "Хлеб", Count: 3}, Free: 3}}
 	if !reflect.DeepEqual(result.Stock, wantStock) {
 		t.Fatalf("stock=%+v", result.Stock)
 	}

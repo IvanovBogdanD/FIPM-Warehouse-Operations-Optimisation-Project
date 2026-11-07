@@ -8,21 +8,58 @@ import (
 )
 
 type Product struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Count int    `json:"count"`
+	ID              int     `json:"id"`
+	Name            string  `json:"name"`
+	Count           int     `json:"count"`
+	Article         string  `json:"article"`
+	SKU             string  `json:"sku"`
+	Supplier        string  `json:"supplier"`
+	Manufacturer    string  `json:"manufacturer"`
+	Warehouse       string  `json:"warehouse"`
+	StorageLocation string  `json:"storageLocation"`
+	ReceivedOn      string  `json:"receivedOn"`
+	ExpiresOn       string  `json:"expiresOn"`
+	Rotation        string  `json:"rotation"`
+	LengthMm        int     `json:"lengthMm"`
+	WidthMm         int     `json:"widthMm"`
+	HeightMm        int     `json:"heightMm"`
+	WeightKg        float64 `json:"weightKg"`
+	LiquidVolumeL   float64 `json:"liquidVolumeL"`
+	PackageVolumeL  float64 `json:"packageVolumeL"`
+	UnitsPerPackage int     `json:"unitsPerPackage"`
+	DemoData        bool    `json:"demoData"`
+}
+
+const productColumns = "id, name, count, article, sku, supplier, manufacturer, warehouse, " +
+	"storage_location, received_on, expires_on, rotation, length_mm, width_mm, height_mm, " +
+	"weight_kg, liquid_volume_l, package_volume_l, units_per_package, demo_data"
+
+func scanProduct(row interface{ Scan(...any) error }) (Product, error) {
+	var p Product
+	err := row.Scan(
+		&p.ID, &p.Name, &p.Count, &p.Article, &p.SKU,
+		&p.Supplier, &p.Manufacturer, &p.Warehouse, &p.StorageLocation,
+		&p.ReceivedOn, &p.ExpiresOn, &p.Rotation,
+		&p.LengthMm, &p.WidthMm, &p.HeightMm, &p.WeightKg,
+		&p.LiquidVolumeL, &p.PackageVolumeL, &p.UnitsPerPackage, &p.DemoData,
+	)
+	return p, err
+}
+
+func matchesProduct(p Product, query string) bool {
+	return strings.Contains(strings.ToLower(p.Name), query) || strings.Contains(strings.ToLower(p.Article), query) || strings.Contains(strings.ToLower(p.SKU), query)
 }
 
 func (s *DBService) GetAllProducts() ([]Product, error) {
-	rows, err := s.db.Query("SELECT id, name, count FROM products ORDER BY id")
+	rows, err := s.db.Query("SELECT " + productColumns + " FROM products ORDER BY id")
 	if err != nil {
 		return nil, fmt.Errorf("получение каталога: %w", err)
 	}
 	defer rows.Close()
 	products := []Product{}
 	for rows.Next() {
-		var p Product
-		if err := rows.Scan(&p.ID, &p.Name, &p.Count); err != nil {
+		p, err := scanProduct(rows)
+		if err != nil {
 			return nil, fmt.Errorf("чтение товара: %w", err)
 		}
 		products = append(products, p)
@@ -41,7 +78,7 @@ func (s *DBService) SearchProducts(query string) ([]Product, error) {
 	query = strings.ToLower(strings.TrimSpace(query))
 	found := []Product{}
 	for _, p := range products {
-		if strings.Contains(strings.ToLower(p.Name), query) {
+		if matchesProduct(p, query) {
 			found = append(found, p)
 		}
 	}
@@ -58,18 +95,18 @@ func (s *DBService) SearchProductsPage(query string, afterID int) (ProductPage, 
 	if afterID < 0 {
 		return page, errors.New("идентификатор последнего товара не может быть отрицательным")
 	}
-	rows, err := s.db.Query("SELECT id, name, count FROM products WHERE id > ? ORDER BY id", afterID)
+	rows, err := s.db.Query("SELECT "+productColumns+" FROM products WHERE id > ? ORDER BY id", afterID)
 	if err != nil {
 		return page, fmt.Errorf("поиск товаров: %w", err)
 	}
 	defer rows.Close()
 	query = strings.ToLower(strings.TrimSpace(query))
 	for rows.Next() {
-		var product Product
-		if err := rows.Scan(&product.ID, &product.Name, &product.Count); err != nil {
+		product, err := scanProduct(rows)
+		if err != nil {
 			return page, fmt.Errorf("чтение товара: %w", err)
 		}
-		if !strings.Contains(strings.ToLower(product.Name), query) {
+		if !matchesProduct(product, query) {
 			continue
 		}
 		if len(page.Products) == 10 {
@@ -85,8 +122,7 @@ func (s *DBService) SearchProductsPage(query string, afterID int) (ProductPage, 
 }
 
 func (s *DBService) GetProduct(id int) (Product, error) {
-	var p Product
-	err := s.db.QueryRow("SELECT id, name, count FROM products WHERE id = ?", id).Scan(&p.ID, &p.Name, &p.Count)
+	p, err := scanProduct(s.db.QueryRow("SELECT "+productColumns+" FROM products WHERE id = ?", id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, errors.New("товар не найден")
 	}

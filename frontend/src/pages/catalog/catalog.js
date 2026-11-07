@@ -13,7 +13,7 @@ export async function loadProducts() {
         if (request !== catalogRequest) return;
         const rows = products.map((product) => {
             const row = document.createElement('tr');
-            for (const value of [product.id, product.name, product.count]) {
+            for (const value of [product.article || '-', product.name, product.count]) {
                 const cell = document.createElement('td');
                 cell.className = 'text-break';
                 cell.textContent = value;

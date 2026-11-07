@@ -133,7 +133,7 @@ async function showInventoryHistory() {
 async function openInventory(details) {
     inventoryDetails = details;
     inventorySelected.clear();
-    inventoryChoices = details.items.map((item) => ({ id: item.productId, name: item.productName, count: item.systemCount }));
+    inventoryChoices = details.items.map((item) => ({ id: item.productId, name: item.productName, count: item.systemCount, article: item.article, storageLocation: item.storageLocation }));
     inventoryChoices.forEach((product) => inventorySelected.add(product.id));
     byId('inventory-product-search').value = '';
     if (details.status === 'completed') { showInventoryReport(); return; }
@@ -201,7 +201,7 @@ function renderInventorySelection() {
         checkbox.checked = full || inventorySelected.has(product.id); checkbox.disabled = full;
         checkbox.setAttribute('aria-label', `Выбрать: ${product.name}`);
         const choice = document.createElement('td'); choice.append(checkbox);
-        row.append(choice, inventoryCell(product.name, 'fw-semibold'), inventoryCell('-'), inventoryCell('-'), inventoryCell(product.count, 'text-end'));
+        row.append(choice, inventoryCell(product.name, 'fw-semibold'), inventoryCell(product.article || '-'), inventoryCell(product.storageLocation || '-'), inventoryCell(product.count, 'text-end'));
         body.append(row);
     }
     if (!inventoryChoices.length) { const row = document.createElement('tr'); const cell = inventoryCell('Нажмите на поиск, чтобы выбрать товары.'); cell.colSpan = 5; row.append(cell); body.append(row); }
@@ -249,7 +249,7 @@ function renderInventoryCounts() {
     const body = byId('inventory-items-body'); body.replaceChildren();
     for (const item of inventoryDetails.items) {
         const row = document.createElement('tr'); row.dataset.productId = item.productId;
-        row.append(inventoryCell(item.productName, 'fw-semibold'), inventoryCell('-'), inventoryCell(item.systemCount, 'text-end'), inventoryInputCell(item, 'actualCount'), inventoryInputCell(item, 'comment')); body.append(row);
+        row.append(inventoryCell(item.productName, 'fw-semibold'), inventoryCell(item.storageLocation || '-'), inventoryCell(item.systemCount, 'text-end'), inventoryInputCell(item, 'actualCount'), inventoryInputCell(item, 'comment')); body.append(row);
     }
 }
 
@@ -277,7 +277,7 @@ function renderInventoryComparison() {
         row.dataset.productId = item.productId;
         const badge = document.createElement('span');
         const cell = document.createElement('td'); cell.append(badge);
-        row.append(inventoryCell(item.productName, 'fw-semibold'), inventoryCell('-'), inventoryCell(item.systemCount, 'text-end'), inventoryInputCell(item, 'actualCount'), inventoryCell(''), cell, inventoryInputCell(item, 'comment'));
+        row.append(inventoryCell(item.productName, 'fw-semibold'), inventoryCell(item.storageLocation || '-'), inventoryCell(item.systemCount, 'text-end'), inventoryInputCell(item, 'actualCount'), inventoryCell(''), cell, inventoryInputCell(item, 'comment'));
         body.append(row);
     }
     updateInventoryComparison(inventoryDetails.items);
