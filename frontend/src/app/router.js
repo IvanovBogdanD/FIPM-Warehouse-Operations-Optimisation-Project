@@ -3,9 +3,10 @@ import { loadHome } from '../pages/home/home.js';
 import { loadProducts } from '../pages/catalog/catalog.js';
 import { loadProduct } from '../pages/catalog/product.js';
 import { loadReceiving } from '../pages/receiving/receiving.js';
-import { loadOrders } from '../pages/orders/orders.js'; // Взяли из main
-import { loadUsers } from '../pages/users/users.js';    // Взяли из твоей ветки
-//функция ролей
+import { loadUsers } from '../pages/users/users.js';
+import { loadInventory } from '../pages/inventory/inventory.js';
+import { loadOrders } from '../pages/orders/orders.js';
+
 function updateMenuVisibility(role) {
     const menuItems = ['nav-home', 'nav-products', 'nav-orders', 'nav-inventory', 'nav-analytics', 'nav-analytics-header', 'nav-users'];
     menuItems.forEach(id => {
@@ -18,7 +19,6 @@ function updateMenuVisibility(role) {
         if (byId('nav-users')) byId('nav-users').classList.remove('d-none');
     } 
     else if (role === 'Кладовщик') {
-        if (byId('nav-home')) byId('nav-home').classList.remove('d-none');
         if (byId('nav-inventory')) byId('nav-inventory').classList.remove('d-none');
     } 
     else if (role === 'Менеджер') {
@@ -43,17 +43,18 @@ async function route() {
         return;
     }
 
-    if (location.hash === '#auth' || location.hash === '') {
-        location.hash = '#home';
-        return;
-    }
-
     byId('main-layout').classList.remove('d-none');
     byId('auth-page').classList.add('d-none');
 
     const user = JSON.parse(userStr);
-    
-    // ЗАПОЛНЯЕМ КАРТОЧКУ ПОЛЬЗОВАТЕЛЯ ВНИЗУ САЙДБАРА
+
+    // Дефолтный маршрут по роли после входа
+    if (location.hash === '#auth' || location.hash === '') {
+        location.hash = (user.role === 'Кладовщик') ? '#inventory' : '#home';
+        return;
+    }
+
+    // Карточка пользователя внизу сайдбара
     const userNameEl = byId('sidebar-user-name');
     const userRoleEl = byId('sidebar-user-role');
     const userInitialEl = byId('sidebar-user-initial');
@@ -68,8 +69,8 @@ async function route() {
     let hash = location.hash.slice(1) || 'home';
 
     if (user.role === 'Кладовщик') {
-        if (!['home', 'inventory'].includes(hash)) {
-            location.hash = '#home';
+        if (hash !== 'inventory') {
+            location.hash = '#inventory';
             return;
         }
     } 
@@ -98,7 +99,7 @@ async function route() {
     if (hash === 'inventory') page = 'inventory';
     
     const titles = { 
-        home: 'Главная', catalog: 'Товары', product: 'Карточка товара', 
+        home: 'Главная', catalog: 'Товары', product: 'Товары / Карточка товара',
         orders: 'Заказы', receiving: 'Заказы', users: 'Пользователи', inventory: 'Инвентаризация' 
     };
     
@@ -127,6 +128,7 @@ async function route() {
     if (page === 'orders') await loadOrders();
     if (page === 'receiving') await loadReceiving();
     if (page === 'users') await loadUsers();
+    if (page === 'inventory') await loadInventory();
 }
 
 export function initRouter() {

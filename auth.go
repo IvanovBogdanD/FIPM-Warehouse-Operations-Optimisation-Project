@@ -107,3 +107,35 @@ func (a *AuthService) Login(email, password string) (*UserResponse, error) {
 	// 3. Возвращаем данные.
 	return &user, nil
 }
+
+// SeedAdmin создает первого администратора, если база пуста
+func (a *AuthService) SeedAdmin() error {
+	var count int
+	err := a.db.QueryRow(`SELECT COUNT(id) FROM users`).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("проверка пользователей: %w", err)
+	}
+
+	// Если пользователи уже есть, ничего не делаем
+	if count > 0 {
+		return nil
+	}
+
+	// Хэшируем пароль "a"
+	hash, err := bcrypt.GenerateFromPassword([]byte("a"), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("хэширование пароля админа: %w", err)
+	}
+
+	// Создаем админа (is_approved = 1, чтобы мог войти сразу)
+	_, err = a.db.Exec(`
+		INSERT INTO users (last_name, first_name, middle_name, email, password_hash, role, is_approved) 
+		VALUES ('Админов', 'Админ', 'Админович', 'admin@mail.ru', ?, 'Администратор', 1)
+	`, string(hash))
+
+	if err != nil {
+		return fmt.Errorf("создание админа: %w", err)
+	}
+
+	return nil
+}
