@@ -1,0 +1,88 @@
+<!-- ЭКРАН ВХОДА -->
+<div id="login-screen" class="d-flex vh-100 w-100 position-fixed top-0 start-0 align-items-center justify-content-center bg-light" style="z-index: 1050;">
+    <div class="card shadow-sm border-0" style="width: 100%; max-width: 420px;">
+        <div class="card-body p-4 p-md-5">
+            <h4 class="text-center fw-bold mb-4">Вход в систему</h4>
+            
+            <form id="login-form">
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Email</label>
+                    <input type="email" class="form-control" id="login-email" required placeholder="Введите ваш email">
+                </div>
+                <div class="mb-4">
+                    <label class="form-label small text-muted">Пароль</label>
+                    <input type="password" class="form-control" id="login-password" required placeholder="Введите пароль">
+                </div>
+                
+                <button type="submit" class="btn btn-primary w-100 py-2">Войти</button>
+            </form>
+            
+            <div id="login-error" class="text-danger mt-3 text-center small" style="display: none;"></div>
+            
+            <div class="text-center mt-4 small">
+                <a href="#" id="link-to-register" class="text-decoration-none">Нет аккаунта? Регистрация</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ЭКРАН РЕГИСТРАЦИИ -->
+<div id="register-screen" class="d-none vh-100 w-100 position-fixed top-0 start-0 align-items-center justify-content-center bg-light" style="z-index: 1050;">
+    <div class="card shadow-sm border-0 my-auto" style="width: 100%; max-width: 500px;">
+        <div class="card-body p-4 p-md-5">
+            <h4 class="text-center fw-bold mb-4">Регистрация</h4>
+            
+            <form id="register-form">
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">Фамилия</label>
+                        <input type="text" class="form-control" id="reg-lastname" required placeholder="Петрова">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">Имя</label>
+                        <input type="text" class="form-control" id="reg-firstname" required placeholder="Анна">
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Отчество</label>
+                    <input type="text" class="form-control" id="reg-middlename" placeholder="Сергеевна">
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Email</label>
+                    <input type="email" class="form-control" id="reg-email" required placeholder="petrova@mail.ru">
+                </div>
+                
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">Пароль</label>
+                        <input type="password" class="form-control" id="reg-password" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">Повтор пароля</label>
+                        <input type="password" class="form-control" id="reg-password-confirm" required>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="form-label small text-muted">Роль</label>
+                    <select class="form-select" id="reg-role">
+                        <option value="" disabled selected>Выберите роль</option>
+                        <option value="Кладовщик">Кладовщик</option>
+                        <option value="Менеджер">Менеджер</option>
+                        <option value="Администратор">Администратор</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 py-2">Зарегистрироваться</button>
+            </form>
+            
+            <div id="register-error" class="text-danger mt-3 text-center small" style="display: none;"></div>
+            
+            <div class="text-center mt-4 small">
+                <a href="#" id="link-to-login" class="text-decoration-none">Уже есть аккаунт? Войти</a>
+            </div>
+        </div>
+    </div>
+</div>

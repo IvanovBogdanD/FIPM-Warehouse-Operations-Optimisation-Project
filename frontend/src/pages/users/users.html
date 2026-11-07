@@ -1,0 +1,40 @@
+<div id="users-page" hidden>
+  <div class="row">
+    <div class="col-12">
+      <div class="card shadow-sm border-0 mb-4">
+        
+        <!-- Заголовок карточки -->
+        <div class="card-header bg-transparent d-flex align-items-center py-3">
+          <h3 class="card-title mb-0 fw-semibold">Список сотрудников</h3>
+          <div class="ms-auto">
+            <button class="btn btn-sm btn-outline-primary" id="btn-refresh-users">
+              Обновить
+            </button>
+          </div>
+        </div>
+        
+        <!-- Сама таблица -->
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-vcenter table-hover mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th class="w-1 ps-4">ID</th>
+                  <th>ФИО</th>
+                  <th>Email</th>
+                  <th>Роль</th>
+                  <th>Статус</th>
+                  <th class="w-1 pe-4 text-end">Действие</th>
+                </tr>
+              </thead>
+              <tbody id="users-body">
+                <tr><td colspan="6" class="text-center text-muted py-5">Загрузка данных...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
