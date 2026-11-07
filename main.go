@@ -19,6 +19,10 @@ func main() {
 	if err != nil {
 		log.Fatal("Не удалось открыть БД:", err)
 	}
+	if err := dbService.InitProducts(); err != nil {
+		log.Fatal("Ошибка подготовки товаров: ", err)
+	}
+
 	authService := NewAuthService(dbService.db)
 	if err := authService.InitSchema(); err != nil {
 		log.Fatal("Ошибка создания таблицы users: ", err)

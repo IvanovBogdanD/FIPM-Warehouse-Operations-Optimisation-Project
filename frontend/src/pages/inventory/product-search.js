@@ -88,7 +88,7 @@ async function loadInventoryProducts(append) {
         }
         inventorySearchResults(Array.from(inventorySearchProducts.values()));
         more.hidden = !page.hasMore;
-        showStatus(status, options.children.length ? `Показано товаров: ${options.children.length}` : 'В базе нет товаров с таким названием.');
+        showStatus(status, options.children.length ? `Показано товаров: ${options.children.length}` : 'По запросу товары не найдены.');
     } catch (err) {
         if (version === inventorySearchVersion) showError(status, err);
     } finally {

@@ -26,6 +26,27 @@ function renderProduct(stock) {
     byId('product-free-share').textContent = `Свободно ${freeShare}%`;
     byId('product-reserved-share').textContent = `В брони ${reservedShare}%`;
     byId('product-warning').hidden = stock.free >= 0;
+    const measure = (value, unit) => value > 0 ? `${value.toLocaleString('ru-RU')} ${unit}` : 'Не указано';
+    const date = (value) => value ? value.split('-').reverse().join('.') : 'Не указана';
+    const fields = {
+        supplier: stock.supplier || 'Не указан',
+        manufacturer: stock.manufacturer || 'Не указан',
+        article: stock.article || 'Не указан',
+        sku: stock.sku ? `${stock.sku} · ${stock.unitsPerPackage} ед.` : 'Не указан',
+        warehouse: stock.warehouse || 'Не указан',
+        location: stock.storageLocation || 'Не указана',
+        'position-id': stock.id,
+        'received-on': date(stock.receivedOn),
+        storage: stock.rotation ? `${stock.expiresOn ? `До ${date(stock.expiresOn)}` : 'Без ограничения срока'} · ${stock.rotation}` : 'Не указан',
+        length: measure(stock.lengthMm, 'мм'),
+        width: measure(stock.widthMm, 'мм'),
+        height: measure(stock.heightMm, 'мм'),
+        weight: measure(stock.weightKg, 'кг'),
+        'liquid-volume': stock.liquidVolumeL === 0 ? 'Не применяется' : measure(stock.liquidVolumeL, 'л'),
+        'package-volume': measure(stock.packageVolumeL, 'л'),
+    };
+    for (const [id, value] of Object.entries(fields)) byId(`product-${id}`).textContent = value;
+    byId('product-demo-note').hidden = !stock.demoData;
 }
 
 export async function loadProduct(id) {

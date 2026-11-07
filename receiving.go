@@ -92,10 +92,9 @@ func (s *DBService) CompleteReceiving(id string) (ReceivingOrder, error) {
 		return ReceivingOrder{}, fmt.Errorf("начало приёмки: %w", err)
 	}
 	defer tx.Rollback()
-	var product Product
-	err = tx.QueryRow(`UPDATE products SET count = count + ?
+	product, err := scanProduct(tx.QueryRow(`UPDATE products SET count = count + ?
 		WHERE id = ? AND typeof(count) = 'integer' AND count >= 0 AND count <= ?
-		RETURNING id, name, count`, order.Quantity, order.Product.ID, maxSafeCount-order.Quantity).Scan(&product.ID, &product.Name, &product.Count)
+		RETURNING `+productColumns, order.Quantity, order.Product.ID, maxSafeCount-order.Quantity))
 	if errors.Is(err, sql.ErrNoRows) {
 		return ReceivingOrder{}, errors.New("товар отсутствует, остаток некорректен или произойдёт переполнение")
 	}

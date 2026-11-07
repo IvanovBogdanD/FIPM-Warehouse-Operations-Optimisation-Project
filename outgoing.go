@@ -31,11 +31,9 @@ type CompleteOutgoingRequest struct {
 }
 
 type ProductStock struct {
-	ID       int    `json:"id"`
-	Name     string `json:"name"`
-	Count    int    `json:"count"`
-	Reserved int64  `json:"reserved"`
-	Free     int64  `json:"free"`
+	Product
+	Reserved int64 `json:"reserved"`
+	Free     int64 `json:"free"`
 }
 
 type OutgoingResult struct {
@@ -69,7 +67,7 @@ func (s *DBService) stocksOf(products []Product) []ProductStock {
 	stocks := make([]ProductStock, 0, len(products))
 	for _, product := range products {
 		stocks = append(stocks, ProductStock{
-			ID: product.ID, Name: product.Name, Count: product.Count,
+			Product:  product,
 			Reserved: reserved[product.ID], Free: int64(product.Count) - reserved[product.ID],
 		})
 	}
@@ -182,10 +180,9 @@ func (s *DBService) CompleteOutgoing(id string, request CompleteOutgoingRequest)
 	defer tx.Rollback()
 	products := make([]Product, 0, len(order.Items))
 	for _, item := range order.Items {
-		var product Product
-		err := tx.QueryRow(`UPDATE products SET count = count - ?
+		product, err := scanProduct(tx.QueryRow(`UPDATE products SET count = count - ?
 			WHERE id = ? AND typeof(count) = 'integer' AND count >= ?
-			RETURNING id, name, count`, item.Quantity, item.ProductID, item.Quantity).Scan(&product.ID, &product.Name, &product.Count)
+			RETURNING `+productColumns, item.Quantity, item.ProductID, item.Quantity))
 		if errors.Is(err, sql.ErrNoRows) {
 			return OutgoingResult{}, fmt.Errorf("на складе не хватает товара «%s»", item.Name)
 		}
