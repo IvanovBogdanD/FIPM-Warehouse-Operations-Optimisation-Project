@@ -23,6 +23,9 @@ func main() {
 	if err := authService.InitSchema(); err != nil {
 		log.Fatal("Ошибка создания таблицы users: ", err)
 	}
+	if err := authService.SeedAdmin(); err != nil {
+		log.Fatal("Ошибка создания первого администратора: ", err)
+	}
 	adminService := NewAdminService(dbService.db)
 	inventoryService := NewInventoryService(dbService.db)
 	if err := inventoryService.InitSchema(); err != nil {

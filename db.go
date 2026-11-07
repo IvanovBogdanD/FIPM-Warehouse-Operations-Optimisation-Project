@@ -15,7 +15,7 @@ type DBService struct {
 }
 
 func NewDBService() (*DBService, error) {
-	db, err := sql.Open("sqlite", "file:store.db?mode=rw")
+	db, err := sql.Open("sqlite", "file:store.db?mode=rwc")
 	if err != nil {
 		return nil, fmt.Errorf("открытие БД: %w", err)
 	}

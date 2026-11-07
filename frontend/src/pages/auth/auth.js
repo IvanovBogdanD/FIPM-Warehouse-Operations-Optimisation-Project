@@ -1,65 +1,102 @@
 import { byId } from '../../shared/dom.js';
 
 export function initAuth() {
+    const loginScreen = byId('login-screen');
+    const registerScreen = byId('register-screen');
     const loginForm = byId('login-form');
-    const regForm = byId('register-form');
-    const toggleBtn = byId('toggle-auth-mode');
-    const errorBox = byId('auth-error');
+    const registerForm = byId('register-form');
+    const linkToRegister = byId('link-to-register');
+    const linkToLogin = byId('link-to-login');
+    const loginError = byId('login-error');
+    const registerError = byId('register-error');
 
-    if (!loginForm) return; // Защита, если формы нет
+    if (!loginForm || !registerForm) return;
 
-    toggleBtn.addEventListener('click', (e) => {
+    // Переключение на регистрацию
+    linkToRegister.addEventListener('click', (e) => {
         e.preventDefault();
-        loginForm.classList.toggle('d-none');
-        regForm.classList.toggle('d-none');
-        errorBox.classList.add('d-none');
-        toggleBtn.textContent = loginForm.classList.contains('d-none') 
-            ? 'Уже есть аккаунт? Войти' 
-            : 'Нет аккаунта? Регистрация';
+        loginScreen.classList.add('d-none');
+        loginScreen.classList.remove('d-flex');
+        
+        registerScreen.classList.remove('d-none');
+        registerScreen.classList.add('d-flex');
+        
+        loginError.style.display = 'none';
     });
 
-    function showError(msg) {
-        errorBox.textContent = msg;
-        errorBox.classList.remove('d-none');
-    }
+    // Переключение на вход
+    linkToLogin.addEventListener('click', (e) => {
+        e.preventDefault();
+        registerScreen.classList.add('d-none');
+        registerScreen.classList.remove('d-flex');
+        
+        loginScreen.classList.remove('d-none');
+        loginScreen.classList.add('d-flex');
+        
+        registerError.style.display = 'none';
+    });
 
+    // Обработка входа
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        errorBox.classList.add('d-none');
+        loginError.style.display = 'none';
+        
         const email = byId('login-email').value;
         const password = byId('login-password').value;
 
         try {
             const user = await window.go.main.AuthService.Login(email, password);
+            
             if (!user.isApproved) {
-                showError('Ваш аккаунт ожидает подтверждения администратором.');
+                loginError.textContent = 'Ваш аккаунт ожидает подтверждения администратором.';
+                loginError.style.display = 'block';
                 return;
             }
+            
             sessionStorage.setItem('user', JSON.stringify(user));
-            window.location.hash = '#home';
+            
+            if (user.role === 'Кладовщик') {
+                window.location.hash = '#inventory';
+            } else {
+                window.location.hash = '#home';
+            }
         } catch (err) {
-            showError(err.message || 'Ошибка входа');
+            loginError.textContent = err.message || String(err) || 'Ошибка входа';
+            loginError.style.display = 'block';
         }
     });
 
-    regForm.addEventListener('submit', async (e) => {
+    // Обработка регистрации
+    registerForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        errorBox.classList.add('d-none');
+        registerError.style.display = 'none';
+        
+        const pass = byId('reg-password').value;
+        const passConfirm = byId('reg-password-confirm').value;
+        
+        if (pass !== passConfirm) {
+            registerError.textContent = 'Пароли не совпадают';
+            registerError.style.display = 'block';
+            return;
+        }
+
         const req = {
-            lastName: byId('reg-lastName').value,
-            firstName: byId('reg-firstName').value,
-            middleName: byId('reg-middleName').value,
+            lastName: byId('reg-lastname').value,
+            firstName: byId('reg-firstname').value,
+            middleName: byId('reg-middlename').value,
             email: byId('reg-email').value,
-            password: byId('reg-password').value,
+            password: pass,
             role: byId('reg-role').value,
         };
 
         try {
             await window.go.main.AuthService.Register(req);
-            alert('Регистрация успешна! Ожидайте подтверждения администратора.');
-            toggleBtn.click();
+            alert('Регистрация успешна! Ожидайте подтверждения администратором.');
+            registerForm.reset();
+            linkToLogin.click();
         } catch (err) {
-            showError(err.message || 'Ошибка регистрации');
+            registerError.textContent = err.message || String(err) || 'Ошибка регистрации';
+            registerError.style.display = 'block';
         }
     });
 }
