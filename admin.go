@@ -51,7 +51,27 @@ func (a *AdminService) ApproveUser(userID int) error {
 		return fmt.Errorf("одобрение пользователя: %w", err)
 	}
 
-	affected, err := res.RowsAffected()
+	affected, err := res.RowsAffected() //тут мы говорим: скажи сколько строк изменилось
+	if err != nil {
+		return fmt.Errorf("проверка количества обновленных строк: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("пользователь с id %d не найден", userID)
+	}
+
+	return nil
+}
+func (a *AdminService) BlockUser(userID int) error {
+	res, err := a.db.Exec(`
+		UPDATE users
+		SET is_approved = 0
+		WHERE id = ?
+	`, userID)
+	if err != nil {
+		return fmt.Errorf("блокировка пользователя: %w", err)
+	}
+
+	affected, err := res.RowsAffected() //тут мы говорим: скажи сколько строк изменилось
 	if err != nil {
 		return fmt.Errorf("проверка количества обновленных строк: %w", err)
 	}
