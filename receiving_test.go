@@ -21,7 +21,7 @@ func checkStock(t *testing.T, s *DBService, want int) {
 }
 
 func TestReceivingValidation(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	for _, quantity := range []string{"", "0", "-1", "+1", "1.5", "1e2", "NaN", " 3", "9007199254740992", "18446744073709551616"} {
 		request := receivingRequest()
 		request.Quantity = quantity
@@ -45,7 +45,7 @@ func TestReceivingValidation(t *testing.T) {
 }
 
 func TestReceivingDraftCancelAndPersistence(t *testing.T) {
-	s, path := testStore(t)
+	s, path := testOrderStore(t)
 	beforeSchema := schema(t, s.db)
 	beforeProducts, err := s.GetAllProducts()
 	if err != nil {
@@ -59,7 +59,7 @@ func TestReceivingDraftCancelAndPersistence(t *testing.T) {
 		t.Fatalf("order=%+v", order)
 	}
 	stored, err := s.GetReceiving(order.ID)
-	if err != nil || stored != order {
+	if err != nil || !reflect.DeepEqual(stored, order) {
 		t.Fatalf("stored=%+v error=%v", stored, err)
 	}
 	checkStock(t, s, 10)
@@ -81,7 +81,7 @@ func TestReceivingDraftCancelAndPersistence(t *testing.T) {
 	if err != nil || completed.Status != "completed" || completed.Product.Count != 13 {
 		t.Fatalf("completed=%+v error=%v", completed, err)
 	}
-	if again, err := s.CompleteReceiving(order.ID); err != nil || again != completed {
+	if again, err := s.CompleteReceiving(order.ID); err != nil || !reflect.DeepEqual(again, completed) {
 		t.Fatalf("repeat=%+v error=%v", again, err)
 	}
 	if err := s.CancelReceiving(order.ID); err == nil {
@@ -110,7 +110,7 @@ func TestReceivingDraftCancelAndPersistence(t *testing.T) {
 }
 
 func TestReceivingConcurrentCompletionAndCatalog(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	s.db.SetMaxOpenConns(1)
 	const orders = 20
 	shared, err := s.CreateReceiving(receivingRequest())
@@ -145,7 +145,7 @@ func TestReceivingConcurrentCompletionAndCatalog(t *testing.T) {
 }
 
 func TestReceivingCancelDuringCompletion(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	order, err := s.CreateReceiving(receivingRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestReceivingCancelDuringCompletion(t *testing.T) {
 
 func TestReceivingInvalidStoredCounts(t *testing.T) {
 	for _, stored := range []any{nil, -1, 1.5, "invalid", int64(1<<63 - 1), maxSafeCount - 1} {
-		s, _ := testStore(t)
+		s, _ := testOrderStore(t)
 		order, err := s.CreateReceiving(receivingRequest())
 		if err != nil {
 			t.Fatal(err)
@@ -190,7 +190,7 @@ func TestReceivingInvalidStoredCounts(t *testing.T) {
 }
 
 func TestReceivingSQLiteFailureAndRetry(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	order, err := s.CreateReceiving(receivingRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -219,7 +219,7 @@ func TestReceivingSQLiteFailureAndRetry(t *testing.T) {
 }
 
 func TestReceivingCommitFailure(t *testing.T) {
-	s, path := testStore(t)
+	s, path := testOrderStore(t)
 	order, err := s.CreateReceiving(receivingRequest())
 	if err != nil {
 		t.Fatal(err)

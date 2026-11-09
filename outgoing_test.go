@@ -323,7 +323,7 @@ func TestConcurrentOutgoingNeverOverReserves(t *testing.T) {
 }
 
 func TestReceivingIncreasesFreeStock(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	if _, err := s.CreateOutgoing(outgoingRequest()); err != nil {
 		t.Fatal(err)
 	}

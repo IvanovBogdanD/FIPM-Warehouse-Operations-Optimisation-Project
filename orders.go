@@ -10,6 +10,7 @@ type OrderItem struct {
 	ProductID int    `json:"productId"`
 	Name      string `json:"name"`
 	Quantity  int64  `json:"quantity"`
+	Location  string `json:"location,omitempty"`
 }
 
 type Order struct {
@@ -28,15 +29,17 @@ type Order struct {
 }
 
 func (o ReceivingOrder) toOrder() Order {
+	items := make([]OrderItem, 0, len(o.Items))
+	for _, item := range o.Items {
+		items = append(items, OrderItem{ProductID: item.Product.ID, Name: item.Product.Name, Quantity: item.Quantity, Location: item.Location})
+	}
+	location := o.Location
+	if len(items) > 1 {
+		location = ""
+	}
 	return Order{
-		ID:          o.ID,
-		Number:      o.Number,
-		Type:        "receiving",
-		Status:      o.Status,
-		CreatedAt:   o.CreatedAt,
-		Responsible: o.Responsible,
-		Location:    o.Location,
-		Items:       []OrderItem{{ProductID: o.Product.ID, Name: o.Product.Name, Quantity: o.Quantity}},
+		ID: o.ID, Number: o.Number, Type: "receiving", Status: o.Status,
+		CreatedAt: o.CreatedAt, Responsible: o.Responsible, Location: location, Items: items,
 	}
 }
 
