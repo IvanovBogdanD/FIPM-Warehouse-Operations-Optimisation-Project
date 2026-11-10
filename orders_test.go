@@ -11,7 +11,7 @@ import (
 )
 
 func TestOrdersListAndComposition(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	if orders := s.GetOrders(); orders == nil || len(orders) != 0 {
 		t.Fatalf("orders=%#v", orders)
 	}
@@ -38,7 +38,7 @@ func TestOrdersListAndComposition(t *testing.T) {
 	want := Order{
 		ID: second.ID, Number: "П-" + strings.ToUpper(second.ID[:8]), Type: "receiving", Status: "pending",
 		CreatedAt: second.CreatedAt, Responsible: "Петрова А.С.", Location: "A-01",
-		Items: []OrderItem{{ProductID: 2, Name: "Хлеб", Quantity: 7}},
+		Items: []OrderItem{{ProductID: 2, Name: "Хлеб", Quantity: 7, Location: "A-01"}},
 	}
 	if !reflect.DeepEqual(orders[0], want) {
 		t.Fatalf("got=%+v want=%+v", orders[0], want)
@@ -52,7 +52,7 @@ func TestOrdersListAndComposition(t *testing.T) {
 }
 
 func TestOrderJSONKeepsMissingShipmentDate(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	if _, err := s.CreateReceiving(receivingRequest()); err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestOrderJSONKeepsMissingShipmentDate(t *testing.T) {
 }
 
 func TestCancelOrderKeepsItInList(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	beforeSchema := schema(t, s.db)
 	beforeProducts, err := s.GetAllProducts()
 	if err != nil {
@@ -108,7 +108,7 @@ func TestCancelOrderKeepsItInList(t *testing.T) {
 }
 
 func TestCancelOrderRejectsMissingAndCompleted(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	if _, err := s.CancelOrder("missing"); err == nil {
 		t.Fatal("missing order cancelled")
 	}
@@ -129,7 +129,7 @@ func TestCancelOrderRejectsMissingAndCompleted(t *testing.T) {
 }
 
 func TestCancelReceivingAppearsInOrders(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	order, err := s.CreateReceiving(receivingRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -146,7 +146,7 @@ func TestCancelReceivingAppearsInOrders(t *testing.T) {
 }
 
 func TestConcurrentCancelOrderSucceedsOnce(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	order, err := s.CreateReceiving(receivingRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -177,7 +177,7 @@ func TestConcurrentCancelOrderSucceedsOnce(t *testing.T) {
 }
 
 func TestCancelOrderDuringCompletion(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	order, err := s.CreateReceiving(receivingRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -204,7 +204,7 @@ func TestCancelOrderDuringCompletion(t *testing.T) {
 }
 
 func TestOrdersAreNotKeptAfterRestart(t *testing.T) {
-	s, path := testStore(t)
+	s, path := testOrderStore(t)
 	completed, err := s.CreateReceiving(receivingRequest())
 	if err != nil {
 		t.Fatal(err)

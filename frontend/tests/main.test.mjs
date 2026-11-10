@@ -7,7 +7,7 @@ const templateFiles = ['index.html', 'src/layout/layout.html', 'src/pages/home/h
     'src/pages/catalog/catalog.html', 'src/pages/catalog/product.html', 'src/pages/orders/orders.html', 'src/pages/order-form/order-form.html', 'src/pages/receiving/receiving.html',
     'src/pages/auth/auth.html', 'src/pages/users/users.html', 'src/pages/inventory/inventory.html'];
 const html = (await Promise.all(templateFiles.map((file) => readFile(new URL(`../${file}`, import.meta.url), 'utf8')))).join('\n');
-const moduleFiles = ['shared/api.js', 'shared/dom.js', 'shared/icons.js', 'shared/modal.js', 'layout/layout.js',
+const moduleFiles = ['shared/api.js', 'shared/dom.js', 'shared/product-search.js', 'shared/icons.js', 'shared/modal.js', 'layout/layout.js',
     'pages/home/home.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'pages/receiving/receiving.js', 'pages/orders/orders.js', 'pages/order-form/order-form.js',
     'pages/auth/auth.js', 'pages/users/users.js', 'pages/inventory/inventory-data.js', 'pages/inventory/product-search.js', 'pages/inventory/inventory-report.js', 'pages/inventory/inventory.js', 'app/router.js', 'main.js'];
 const scripts = [];
@@ -24,7 +24,7 @@ const main = scripts.join('\n');
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const product = (count = 10) => ({ id: 1, name: 'Молоко', count });
 const receipt = (count = 10, status = 'pending') => ({
-    id: 'test-order', number: 'П-TESTORDE', product: product(count), quantity: 3, responsible: 'Иванов', location: 'Стеллаж 1', status,
+    id: 'test-order', number: 'П-TESTORDE', product: product(count), quantity: 3, responsibleId: 1, responsible: 'Иванов', location: 'Стеллаж 1', status, items: [{ product: product(count), quantity: 3, location: 'Стеллаж 1' }],
 });
 const order = (status = 'pending', changes = {}) => ({
     id: 'test-order', number: 'П-TESTORDE', type: 'receiving', status, createdAt: '2026-10-14T10:42:00+03:00', shipmentDate: null,
@@ -102,6 +102,8 @@ async function app(service = {}, hash = '#products', role = 'Менеджер', 
     const window = new Element();
     window.go = { main: { DBService: {
         SearchProducts: async () => [product()],
+        SearchProductsPage: async () => ({ products: [product()], hasMore: false }),
+        GetManagers: async () => [{ id: 1, name: 'Иванов' }, { id: 2, name: 'Петрова А.С.' }],
         GetAllProducts: async () => [product()],
         CreateReceiving: async () => receipt(), GetReceiving: async () => receipt(),
         CompleteReceiving: async () => receipt(13, 'completed'), CancelReceiving: async () => {},
@@ -128,7 +130,7 @@ async function app(service = {}, hash = '#products', role = 'Менеджер', 
         },
     };
     elements['receiving-form'].reset = () => {
-        for (const id of ['receiving-product', 'receiving-quantity', 'receiving-responsible', 'receiving-location']) elements[id].value = '';
+        for (const id of ['receiving-product-search', 'receiving-responsible']) elements[id].value = '';
     };
     elements['order-form'].reset = () => {
         for (const id of ['order-form-date', 'order-form-responsible', 'order-form-address', 'order-form-note']) elements[id].value = '';
@@ -164,13 +166,19 @@ async function app(service = {}, hash = '#products', role = 'Менеджер', 
         quantityInput(index = 0) {
             return elements['order-form-items'].children[index].children[2].children[0].children[1];
         },
+        async addReceiving(productId = 1, quantity = '3', place = 'Стеллаж 1') {
+            await elements['receiving-product-search'].fire('focus');
+            const button = elements['receiving-product-options'].children.find((item) => Number(item.dataset.productId) === productId);
+            assert.ok(button, 'Товар доступен в поиске');
+            await elements['receiving-product-options'].fire('click', { target: button });
+            const row = elements['receiving-items'].children.at(-1);
+            const amount = row.children[2].children[0]; amount.value = quantity; await amount.fire('input');
+            const location = row.children[3].children[0]; location.value = place; await location.fire('input');
+        },
         async draft() {
             await this.navigate('#orders/receiving');
-            elements['receiving-product'].value = '1';
-            elements['receiving-quantity'].value = '3';
-            elements['receiving-responsible'].value = 'Иванов';
-            elements['receiving-location'].value = 'Стеллаж 1';
-            await elements['receiving-product'].fire('change');
+            elements['receiving-responsible'].value = '1';
+            await this.addReceiving();
             await elements['receiving-form'].fire('submit');
         },
     };
@@ -313,7 +321,7 @@ test('Выбор товара безопасен, подсчёт начинае�
         });
     await ui.elements['inventory-product-search'].fire('focus');
     const button = ui.elements['inventory-product-options'].children[0];
-    assert.equal(button.children[0].textContent, unsafe);
+    assert.equal(button.children[0].textContent, `${unsafe} · ART-1`);
     await ui.elements['inventory-product-options'].fire('click', { target: button });
     await ui.elements['inventory-product-options'].fire('click', { target: button });
     assert.equal(ui.elements['inventory-selection-body'].children[0].children[1].textContent, unsafe);
@@ -403,18 +411,18 @@ test('Сохранённый акт открывается из истории �
 
 test('Поиск игнорирует запоздалые ответы и безопасно выводит названия', async () => {
     const slow = deferred();
-    const ui = await app({ SearchProducts: (query) => query === 'старый' ? slow.promise : Promise.resolve([]) });
+    const ui = await app({ SearchProductsPage: (query) => query === 'старый' ? slow.promise : Promise.resolve({ products: [], hasMore: false }) });
     const search = ui.elements.search;
     search.value = 'старый';
     const old = search.fire('input');
     search.value = 'новый';
     await search.fire('input');
     assert.match(ui.elements['catalog-status'].textContent, /не найдены/);
-    slow.resolve([product()]);
+    slow.resolve({ products: [product()], hasMore: false });
     await old;
     assert.equal(ui.elements['products-body'].children.length, 0);
     const unsafe = '<img src=x onerror=alert(1)>';
-    const safe = await app({ SearchProducts: async () => [{ ...product(), name: unsafe }] });
+    const safe = await app({ SearchProductsPage: async () => ({ products: [{ ...product(), name: unsafe }], hasMore: false }) });
     const row = safe.elements['products-body'].children[0];
     assert.equal(row.children[1].textContent, unsafe);
     assert.equal(row.children[3].children[0].href, '#product/1');
@@ -423,7 +431,7 @@ test('Поиск игнорирует запоздалые ответы и бе�
 test('Ссылка открывает карточку с данными товара, возврат сохраняет поиск', async () => {
     const queries = [];
     const ui = await app({
-        SearchProducts: async (query) => { queries.push(query); return [product()]; },
+        SearchProductsPage: async (query) => { queries.push(query); return { products: [product()], hasMore: false }; },
         GetProductStock: async (id) => { assert.equal(id, 1); return stock(); },
     });
     ui.elements.search.value = 'мол';
@@ -444,7 +452,7 @@ test('Ссылка открывает карточку с данными тов�
 test('Ошибки загрузки видны, обновление каталога позволяет повторить запрос', async () => {
     let failed = true;
     const ui = await app({
-        SearchProducts: async () => { if (failed) throw new Error('SQLite read'); return [product()]; },
+        SearchProductsPage: async () => { if (failed) throw new Error('SQLite read'); return { products: [product()], hasMore: false }; },
         GetProductStock: async () => { throw new Error('товар не найден'); },
     });
     assert.match(ui.elements['catalog-status'].textContent, /SQLite read/);
@@ -458,7 +466,7 @@ test('Ошибки загрузки видны, обновление катал�
     await ui.elements['reload-catalog'].fire('click');
     assert.equal(ui.elements['products-body'].children.length, 1);
     assert.equal(ui.elements['catalog-status'].classes.has('text-danger'), false);
-    assert.match(ui.elements['catalog-status'].textContent, /Найдено товаров: 1/);
+    assert.match(ui.elements['catalog-status'].textContent, /Показано товаров: 1/);
 });
 
 test('Запоздалый ответ карточки не подменяет выбранный товар', async () => {
@@ -533,21 +541,19 @@ test('Приёмка проверяет обязательные поля, от�
         CancelReceiving: async (id) => { assert.equal(id, 'test-order'); cancels++; },
     }, '#receiving');
     for (const quantity of ['', '0', '-1', '1.5', '1e2', '9007199254740992']) {
-        ui.elements['receiving-product'].value = '1';
-        ui.elements['receiving-quantity'].value = quantity;
-        ui.elements['receiving-responsible'].value = 'Иванов';
-        ui.elements['receiving-location'].value = 'Стеллаж 1';
+        ui.elements['receiving-responsible'].value = '1';
+        await ui.addReceiving(1, quantity);
         await ui.elements['receiving-form'].fire('submit');
         assert.match(ui.elements['receiving-status'].textContent, /Количество/);
     }
-    ui.elements['receiving-quantity'].value = '3';
+    await ui.addReceiving(1, '3');
     ui.elements['receiving-responsible'].value = ' ';
     await ui.elements['receiving-form'].fire('submit');
-    assert.match(ui.elements['receiving-status'].textContent, /ФИО/);
+    assert.match(ui.elements['receiving-status'].textContent, /менеджера/);
     assert.equal(creates, 0);
     await ui.draft();
     assert.equal(creates, 1);
-    assert.equal(ui.elements['receiving-current-count'].textContent, '10 шт.');
+    assert.equal(Number(ui.elements['receiving-items'].children[0].children[1].textContent), 10);
     assert.equal(ui.elements['receiving-confirmation'].hidden, false);
     assert.equal(ui.elements['receiving-fields'].disabled, true);
     await ui.navigate('#products');
@@ -557,7 +563,7 @@ test('Приёмка проверяет обязательные поля, от�
     assert.equal(cancels, 1);
     assert.equal(ui.elements['receiving-confirmation'].hidden, true);
     assert.equal(ui.elements['receiving-fields'].disabled, false);
-    assert.match(ui.elements['receiving-status'].textContent, /не изменён/);
+    assert.match(ui.elements['receiving-status'].textContent, /не изменены/);
 });
 
 for (const destination of ['#products', '#product/1', '#home']) {
@@ -565,7 +571,7 @@ for (const destination of ['#products', '#product/1', '#home']) {
         const completion = deferred();
         let count = 10;
         const ui = await app({
-            GetAllProducts: async () => [product(count)], SearchProducts: async () => [product(count)],
+            GetAllProducts: async () => [product(count)], SearchProductsPage: async () => ({ products: [product(count)], hasMore: false }),
             GetProductStock: async () => stock(1, 'Молоко', count), CompleteReceiving: () => completion.promise,
         });
         await ui.draft();
@@ -607,15 +613,15 @@ test('Повторные нажатия не дублируют приёмку, 
     assert.match(ui.elements['receiving-status'].textContent, /SQLite write/);
     assert.equal(ui.elements['complete-receiving'].disabled, false);
     await ui.elements['complete-receiving'].fire('click');
-    assert.equal(ui.elements['receiving-completed-count'].textContent, 'Остаток после завершения: 13 шт.');
+    assert.equal(ui.elements['receiving-completed-count'].textContent, 'Остатки всех позиций сохранены.');
     assert.equal(ui.elements['receiving-actions'].hidden, true);
     await ui.elements['complete-receiving'].fire('click');
     assert.equal(completes, 2);
 });
 
-test('Ошибка списка товаров блокирует создание приёмки до повторной загрузки', async () => {
+test('Ошибка списка менеджеров блокирует создание приёмки до повторной загрузки', async () => {
     let failed = true;
-    const ui = await app({ GetAllProducts: async () => { if (failed) throw new Error('SQLite read'); return [product()]; } }, '#receiving');
+    const ui = await app({ GetManagers: async () => { if (failed) throw new Error('SQLite read'); return [{ id: 1, name: 'Иванов' }]; } }, '#receiving');
     assert.equal(ui.elements['receiving-fields'].disabled, true);
     assert.match(ui.elements['receiving-status'].textContent, /SQLite read/);
     failed = false;
@@ -921,7 +927,7 @@ test('Статус приёмки сообщает об отмене, если �
     await ui.elements['orders-body'].children[0].children[6].children[0].fire('click');
     await ui.navigate('#orders/receiving');
     await ui.elements['order-cancel-confirm'].fire('click');
-    assert.equal(ui.elements['receiving-status'].textContent, 'Черновик отменён. Остаток не изменён.');
+    assert.equal(ui.elements['receiving-status'].textContent, 'Черновик отменён. Остатки не изменены.');
 });
 
 test('Отмена другого заказа не трогает открытый черновик приёмки', async () => {
@@ -1312,4 +1318,57 @@ test('Завершение приёмки обновляет открытую в
     await finishing;
     await tick();
     assert.equal(rowText(ui.elements['orders-body'].children[0])[1], 'Завершён');
+});
+
+
+test('Каталог раскрывает десять позиций, Ещё догружает следующие и выбор открывает карточку', async () => {
+    const calls = [];
+    const ui = await app({ SearchProductsPage: async (query, afterID) => {
+        calls.push([query, afterID]);
+        return { products: Array.from({ length: afterID === 0 ? 10 : 2 }, (_, index) => ({ id: afterID + index + 1, name: `Товар ${afterID + index + 1}`, article: `ART-${afterID + index + 1}`, count: 5 })), hasMore: afterID === 0 };
+    } });
+    assert.equal(ui.elements['products-body'].children.length, 10);
+    assert.equal(ui.elements['catalog-search-results'].classList.contains('show'), false);
+    await ui.elements.search.fire('focus');
+    assert.equal(ui.elements['catalog-product-options'].children.length, 10);
+    assert.equal(ui.elements['catalog-search-more'].hidden, false);
+    await ui.elements['catalog-search-more'].fire('click');
+    assert.deepEqual(calls.at(-1), ['', 10]);
+    assert.equal(ui.elements['catalog-product-options'].children.length, 12);
+    assert.equal(ui.elements['products-body'].children.length, 12);
+    assert.equal(ui.elements['catalog-search-more'].hidden, true);
+    const button = ui.elements['catalog-product-options'].children[0];
+    await ui.elements['catalog-product-options'].fire('click', { target: button });
+    await tick();
+    assert.equal(ui.location.hash, '#product/1');
+});
+
+test('Приёмка отправляет несколько товаров, убирает строки и передаёт ID менеджера', async () => {
+    const products = [{ ...product(), storageLocation: 'A-01' }, { id: 2, name: 'Хлеб', count: 5, storageLocation: 'B-02' }];
+    let sent;
+    const ui = await app({ SearchProductsPage: async () => ({ products, hasMore: false }), CreateReceiving: async (request) => {
+        sent = request;
+        return { ...receipt(), items: request.items.map((item) => ({ product: products.find((p) => p.id === item.productId), quantity: Number(item.quantity), location: item.location })) };
+    } }, '#orders/receiving');
+    ui.elements['receiving-responsible'].value = '1';
+    await ui.addReceiving(1, '3', 'A-01');
+    await ui.addReceiving(2, '4', 'B-02');
+    await ui.addReceiving(2, '4', 'B-02');
+    assert.equal(ui.elements['receiving-items'].children.length, 2);
+    await ui.elements['receiving-items'].children[1].children[4].children[0].fire('click');
+    assert.equal(ui.elements['receiving-items'].children.length, 1);
+    await ui.addReceiving(2, '4', 'B-02');
+    await ui.elements['receiving-form'].fire('submit');
+    assert.equal(sent.responsibleId, 1);
+    assert.equal(sent.items.length, 2);
+    assert.equal(sent.items[0].quantity, '3');
+    assert.equal(sent.items[1].location, 'B-02');
+    assert.equal(ui.elements['receiving-summary-items'].children.length, 2);
+    assert.equal(ui.elements['receiving-summary-items'].children[1].children[0].children[1].textContent, 'B-02');
+});
+
+test('Без одобренных менеджеров приёмка недоступна', async () => {
+    const ui = await app({ GetManagers: async () => [] }, '#orders/receiving');
+    assert.equal(ui.elements['receiving-fields'].disabled, true);
+    assert.match(ui.elements['receiving-status'].textContent, /Нет одобренных менеджеров/);
 });

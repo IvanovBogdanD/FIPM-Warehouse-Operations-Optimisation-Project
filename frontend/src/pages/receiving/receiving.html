@@ -1,59 +1,49 @@
 <section id="receiving-page" aria-label="Приёмка" hidden>
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
-    <h1 class="h3 fw-bold mb-0">Приёмка товара</h1>
+    <h1 class="h3 fw-bold mb-0">Приёмка товаров</h1>
     <a href="#orders" class="btn btn-outline-secondary">К заказам</a>
   </div>
-  <p class="alert alert-info">Черновики, ФИО и место хранения доступны только до закрытия приложения. История заказов не сохраняется после закрытия. Остаток записывается в базу после подтверждения приёмки.</p>
+  <p class="alert alert-info">Заказы доступны до закрытия приложения. Остатки сохраняются в базе после подтверждения приёмки.</p>
   <p id="receiving-status" role="status" aria-live="polite"></p>
-  <div class="row g-4">
-    <div class="col-lg-7">
-      <div class="card shadow-none border">
-        <div class="card-header bg-body py-3"><h2 class="card-title fw-semibold">Новый заказ</h2></div>
-        <div class="card-body">
-          <button id="reload-receiving" class="btn btn-outline-secondary btn-sm mb-3">Обновить товары</button>
-          <form id="receiving-form">
-            <fieldset id="receiving-fields" class="border-0 p-0 m-0" disabled>
-              <div class="mb-3">
-                <label class="form-label" for="receiving-product">Товар</label>
-                <select id="receiving-product" class="form-select" required><option value="">Выберите товар</option></select>
+  <div class="row g-4 align-items-start">
+    <div class="col-xl-8">
+      <section class="card shadow-none border">
+        <div class="card-header bg-body d-flex justify-content-between align-items-center gap-3 py-3"><h2 class="card-title fw-semibold mb-0">Новый заказ</h2><button id="reload-receiving" class="btn btn-outline-secondary btn-sm" type="button">Обновить</button></div>
+        <form id="receiving-form">
+          <fieldset id="receiving-fields" class="border-0 p-0 m-0" disabled>
+            <div class="card-body">
+              <div class="mb-3"><label class="form-label" for="receiving-responsible">Ответственный менеджер</label><select id="receiving-responsible" class="form-select" required><option value="">Выберите менеджера</option></select></div>
+              <label class="form-label" for="receiving-product-search">Добавить товар</label>
+              <div id="receiving-product-picker" class="dropdown">
+                <div class="input-group"><input id="receiving-product-search" class="form-control" type="text" autocomplete="off" placeholder="Название, артикул или SKU" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="receiving-product-options" aria-haspopup="listbox"><button id="receiving-product-search-btn" class="btn btn-outline-primary" type="button">Найти</button></div>
+                <div id="receiving-search-results" class="dropdown-menu top-100 start-0 mt-1 w-100 p-0 shadow">
+                  <div id="receiving-product-options" class="overflow-auto" style="max-height: min(16rem, 35vh);" role="listbox" aria-label="Товары из базы"></div>
+                  <div id="receiving-search-status" class="small text-body-secondary px-3 py-2" role="status" aria-live="polite"></div>
+                  <button id="receiving-search-more" class="dropdown-item text-primary py-2" type="button" hidden>Ещё</button>
+                </div>
               </div>
-              <p>Текущий остаток: <output id="receiving-current-count" class="fw-semibold">Не выбран</output></p>
-              <div class="mb-3">
-                <label class="form-label" for="receiving-quantity">Принимаемое количество</label>
-                <input id="receiving-quantity" class="form-control" type="text" inputmode="numeric" pattern="[0-9]+" required aria-describedby="receiving-quantity-help">
-                <div id="receiving-quantity-help" class="form-text">Целое число от 1 до 9007199254740991.</div>
-              </div>
-              <div class="mb-3">
-                <label class="form-label" for="receiving-responsible">ФИО ответственного</label>
-                <input id="receiving-responsible" class="form-control" type="text" required>
-              </div>
-              <div class="mb-4">
-                <label class="form-label" for="receiving-location">Место хранения</label>
-                <input id="receiving-location" class="form-control" type="text" required>
-              </div>
-              <button id="create-receiving" class="btn btn-primary" type="submit">Создать черновик</button>
-            </fieldset>
-          </form>
-        </div>
-        <div class="card-footer bg-body text-body-secondary small">При создании черновика количество товара не меняется.</div>
-      </div>
+            </div>
+            <div class="table-responsive"><table class="table align-middle mb-0"><thead class="table-light"><tr><th>Товар</th><th class="text-end">На складе</th><th>Принимаем</th><th>Место хранения</th><th><span class="visually-hidden">Убрать</span></th></tr></thead><tbody id="receiving-items"></tbody></table></div>
+            <p id="receiving-items-empty" class="text-center text-body-secondary py-4 mb-0">Выберите товары через поиск.</p>
+            <div class="card-footer bg-body"><button id="create-receiving" class="btn btn-primary" type="submit">Создать черновик</button><p class="text-body-secondary small mt-2 mb-0">При создании черновика остатки не меняются.</p></div>
+          </fieldset>
+        </form>
+      </section>
     </div>
-    <div class="col-lg-5">
+    <div class="col-xl-4">
       <section class="card shadow-none border">
         <div class="card-header bg-body py-3"><h2 class="card-title fw-semibold">Проверка заказа</h2></div>
         <div class="card-body">
-          <p id="receiving-empty" class="text-body-secondary mb-0">Заполните форму и создайте черновик. Здесь появятся данные для подтверждения.</p>
+          <p id="receiving-empty" class="text-body-secondary mb-0">Добавьте товары и создайте черновик. Здесь появится состав заказа.</p>
           <div id="receiving-confirmation" hidden>
             <span id="receiving-order-status" class="badge text-bg-primary mb-3"></span>
             <p id="receiving-order-id" class="text-body-secondary small text-break"></p>
             <dl id="receiving-summary"></dl>
+            <div class="table-responsive"><table class="table table-sm align-middle"><thead class="table-light"><tr><th>Товар</th><th class="text-end">Кол-во</th><th class="text-end">Остаток</th></tr></thead><tbody id="receiving-summary-items"></tbody></table></div>
             <p id="receiving-completed-count" class="alert alert-success" hidden></p>
-            <div id="receiving-actions" class="d-flex flex-wrap gap-2 mb-3">
-              <button id="complete-receiving" class="btn btn-success">Завершить приёмку</button>
-              <button id="cancel-receiving" class="btn btn-outline-danger">Отменить черновик</button>
-            </div>
-            <a id="receiving-product-link" class="btn btn-outline-secondary">Карточка товара</a>
-            <button id="new-receiving" class="btn btn-primary ms-2" hidden>Новая приёмка</button>
+            <div id="receiving-actions" class="d-flex flex-wrap gap-2 mb-3"><button id="complete-receiving" class="btn btn-success" type="button">Завершить приёмку</button><button id="cancel-receiving" class="btn btn-outline-danger" type="button">Отменить черновик</button></div>
+            <a href="#products" class="btn btn-outline-secondary">Каталог товаров</a>
+            <button id="new-receiving" class="btn btn-primary mt-2" type="button" hidden>Новая приёмка</button>
           </div>
         </div>
       </section>

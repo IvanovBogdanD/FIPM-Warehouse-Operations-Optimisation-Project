@@ -169,6 +169,11 @@ function renderOrderDetails() {
         link.textContent = item.name;
         const name = createOrderCell(link);
         name.className = 'text-break';
+        if (item.location) {
+            const location = document.createElement('div');
+            location.className = 'small text-body-secondary'; location.textContent = item.location;
+            name.append(location);
+        }
         const quantity = createOrderCell(`${item.quantity} шт.`);
         quantity.className = 'text-end text-nowrap';
         row.append(name, quantity);

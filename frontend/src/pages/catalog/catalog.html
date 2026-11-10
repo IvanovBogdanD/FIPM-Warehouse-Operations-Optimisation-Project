@@ -2,7 +2,14 @@
         <div class="card-header"><h2 class="card-title">Товары на складе</h2></div>
         <div class="card-body">
           <label class="form-label" for="search">Поиск по названию, артикулу или SKU</label>
-          <input id="search" class="form-control mb-3" type="search" placeholder="Название, артикул или SKU">
+          <div id="catalog-product-picker" class="dropdown mb-3">
+            <div class="input-group"><input id="search" class="form-control" type="search" autocomplete="off" placeholder="Название, артикул или SKU" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="catalog-product-options" aria-haspopup="listbox"><button id="catalog-product-search-btn" class="btn btn-outline-primary" type="button">Найти</button></div>
+            <div id="catalog-search-results" class="dropdown-menu top-100 start-0 mt-1 w-100 p-0 shadow">
+              <div id="catalog-product-options" class="overflow-auto" style="max-height: min(16rem, 35vh);" role="listbox" aria-label="Товары из базы"></div>
+              <div id="catalog-search-status" class="small text-body-secondary px-3 py-2" role="status" aria-live="polite"></div>
+              <button id="catalog-search-more" class="dropdown-item text-primary py-2" type="button" hidden>Ещё</button>
+            </div>
+          </div>
           <p id="catalog-status" role="status" aria-live="polite"></p>
           <button id="reload-catalog" class="btn btn-outline-secondary mb-3">Обновить</button>
           <div class="table-responsive"><table class="table table-striped align-middle">
