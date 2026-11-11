@@ -80,7 +80,7 @@ func TestProductUpgradePreservesCatalog(t *testing.T) {
 }
 
 func TestProductMetadataSurvivesReceivingAndInventory(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	if _, err := s.db.Exec("UPDATE products SET article='TEST-1', sku='SKU-1', warehouse='MSK-01', storage_location='A-01-01-1' WHERE id=1"); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestProductMetadataSurvivesReceivingAndInventory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	order, err := s.CreateReceiving(ReceivingRequest{ProductID: 1, Quantity: "2", Responsible: "Иванов И.И.", Location: "A-01-01-1"})
+	order, err := s.CreateReceiving(ReceivingRequest{ProductID: 1, Quantity: "2", ResponsibleID: 1, Location: "A-01-01-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
