@@ -21,13 +21,22 @@ export function initInventoryProductSearch(onChoose, onResults) {
     });
     byId('inventory-product-search-btn').addEventListener('click', handleSearchProducts);
     byId('inventory-search-more').addEventListener('click', () => loadInventoryProducts(true));
+    
+    // Обработчик клика по товару в поиске
     byId('inventory-product-options').addEventListener('click', (event) => {
         const button = event.target.closest('button[data-product-id]');
         if (!button) return;
+        
         inventorySearchChoose(inventorySearchProducts.get(Number(button.dataset.productId)));
-        closeInventorySearch();
-        input.value = '';
+        
+        // Визуальное выделение (синяя галочка и синий фон)
+        if (!button.classList.contains('active-product')) {
+            button.classList.add('active-product', 'bg-primary-subtle'); // Светло-синий фон
+            const check = button.querySelector('.text-primary');
+            if (check) check.classList.remove('d-none'); // Показываем синюю галочку
+        }
     });
+    
     byId('inventory-product-picker').addEventListener('keydown', handleInventorySearchKey);
     document.addEventListener('pointerdown', handleInventorySearchOutside);
     document.addEventListener('focusin', handleInventorySearchOutside);
@@ -76,13 +85,28 @@ async function loadInventoryProducts(append) {
             button.dataset.productId = product.id;
             button.setAttribute('role', 'option');
             button.setAttribute('aria-selected', 'false');
+
+            // Левая часть с галочкой и названием
+            const leftPart = document.createElement('div');
+            leftPart.className = 'd-flex align-items-center flex-grow-1';
+
+            const check = document.createElement('span');
+            check.innerHTML = '✓';
+            check.className = 'me-2 text-primary fw-bold d-none'; // Скрыта, пока не выбрано
+
             const name = document.createElement('span');
             name.textContent = product.name;
+            
+            leftPart.append(check, name);
+
+            // Правая часть с количеством
             const count = document.createElement('span');
             count.className = 'badge text-bg-light border text-nowrap';
             count.textContent = `${product.count} шт.`;
-            button.append(name, count);
+            
+            button.append(leftPart, count);
             options.append(button);
+            
             inventorySearchCursor = product.id;
             inventorySearchProducts.set(product.id, product);
         }

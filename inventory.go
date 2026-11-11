@@ -101,8 +101,8 @@ type InventoryDetails struct {
 	Items []InventoryItem `json:"items"`
 }
 
-func (i *InventoryService) CreateInventory() (Inventory, error) {
-	res, err := i.db.Exec(`INSERT INTO inventories (status) VALUES ('draft')`)
+func (i *InventoryService) CreateInventory(responsible string) (Inventory, error) {
+	res, err := i.db.Exec(`INSERT INTO inventories (status, responsible) VALUES ('draft', ?)`, responsible)
 	if err != nil {
 		return Inventory{}, fmt.Errorf("create inventory: %w", err)
 	}
@@ -232,6 +232,24 @@ func (i *InventoryService) GetInventory(inventoryID int) (InventoryDetails, erro
 	return details, nil
 }
 
+func (i *InventoryService) DeleteInventoryItem(inventoryID int, productID int) (InventoryDetails, error) {
+	var status string
+	err := i.db.QueryRow(`SELECT status FROM inventories WHERE id = ?`, inventoryID).Scan(&status)
+	if err != nil {
+		return InventoryDetails{}, err
+	}
+	if status != "draft" {
+		return InventoryDetails{}, errors.New("cannot modify completed inventory")
+	}
+
+	_, err = i.db.Exec(`DELETE FROM inventory_items WHERE inventory_id = ? AND product_id = ?`, inventoryID, productID)
+	if err != nil {
+		return InventoryDetails{}, fmt.Errorf("delete inventory item: %w", err)
+	}
+
+	return i.GetInventory(inventoryID)
+}
+
 func (i *InventoryService) SetActualCount(inventoryID int, productID int, actualCount int) error {
 	if actualCount < 0 {
 		return errors.New("actual count must be non-negative")
@@ -319,11 +337,13 @@ func (i *InventoryService) PrepareInventory(id int, request InventoryParameters)
 	if request.Kind == "partial" && len(request.ProductIDs) == 0 {
 		return InventoryDetails{}, errors.New("выберите товары для проверки")
 	}
+
 	tx, err := i.db.Begin()
 	if err != nil {
 		return InventoryDetails{}, err
 	}
 	defer tx.Rollback()
+
 	var status string
 	if err := tx.QueryRow("SELECT status FROM inventories WHERE id=?", id).Scan(&status); err != nil {
 		return InventoryDetails{}, err
@@ -331,35 +351,79 @@ func (i *InventoryService) PrepareInventory(id int, request InventoryParameters)
 	if status != "draft" {
 		return InventoryDetails{}, errors.New("инвентаризация уже завершена")
 	}
-	var counted int
-	if err := tx.QueryRow("SELECT COUNT(*) FROM inventory_items WHERE inventory_id=? AND actual_count IS NOT NULL", id).Scan(&counted); err != nil {
+
+	// 1. Сохраняем в память старые данные (факт и комментарий)
+	oldItems := make(map[int]struct {
+		Actual  sql.NullInt64
+		Comment string
+	})
+	rows, err := tx.Query("SELECT product_id, actual_count, comment FROM inventory_items WHERE inventory_id=?", id)
+	if err != nil {
 		return InventoryDetails{}, err
 	}
-	if counted > 0 {
-		return InventoryDetails{}, errors.New("подсчёт уже начат, состав инвентаризации сохранён")
+	for rows.Next() {
+		var pid int
+		var act sql.NullInt64
+		var com string
+		if err := rows.Scan(&pid, &act, &com); err == nil {
+			oldItems[pid] = struct {
+				Actual  sql.NullInt64
+				Comment string
+			}{act, com}
+		}
 	}
+	rows.Close()
+
+	// 2. Удаляем старый список
 	if _, err := tx.Exec("DELETE FROM inventory_items WHERE inventory_id=?", id); err != nil {
 		return InventoryDetails{}, err
 	}
+
+	// 3. Вставляем новый список, перенося старые данные, если товар остался
 	if request.Kind == "full" {
-		if _, err := tx.Exec("INSERT INTO inventory_items(inventory_id,product_id,system_count) SELECT ?,id,count FROM products", id); err != nil {
+		prodRows, err := tx.Query("SELECT id, count FROM products")
+		if err != nil {
 			return InventoryDetails{}, err
 		}
+		for prodRows.Next() {
+			var pid, sysCount int
+			prodRows.Scan(&pid, &sysCount)
+
+			var act interface{} = nil
+			var com string = ""
+			if old, exists := oldItems[pid]; exists {
+				if old.Actual.Valid {
+					act = old.Actual.Int64
+				}
+				com = old.Comment
+			}
+			tx.Exec("INSERT INTO inventory_items(inventory_id, product_id, system_count, actual_count, comment) VALUES(?,?,?,?,?)", id, pid, sysCount, act, com)
+		}
+		prodRows.Close()
 	} else {
-		for _, productID := range request.ProductIDs {
-			result, err := tx.Exec("INSERT INTO inventory_items(inventory_id,product_id,system_count) SELECT ?,id,count FROM products WHERE id=?", id, productID)
+		for _, pid := range request.ProductIDs {
+			var sysCount int
+			err := tx.QueryRow("SELECT count FROM products WHERE id=?", pid).Scan(&sysCount)
+			if err != nil {
+				return InventoryDetails{}, fmt.Errorf("товар %d не найден", pid)
+			}
+
+			var act interface{} = nil
+			var com string = ""
+			if old, exists := oldItems[pid]; exists {
+				if old.Actual.Valid {
+					act = old.Actual.Int64
+				}
+				com = old.Comment
+			}
+
+			_, err = tx.Exec("INSERT INTO inventory_items(inventory_id, product_id, system_count, actual_count, comment) VALUES(?,?,?,?,?)", id, pid, sysCount, act, com)
 			if err != nil {
 				return InventoryDetails{}, err
-			}
-			added, err := result.RowsAffected()
-			if err != nil {
-				return InventoryDetails{}, err
-			}
-			if added == 0 {
-				return InventoryDetails{}, fmt.Errorf("товар %d не найден", productID)
 			}
 		}
 	}
+
 	if _, err := tx.Exec("UPDATE inventories SET inventory_date=?,responsible=?,commission=?,kind=? WHERE id=?", request.Date, request.Responsible, strings.TrimSpace(request.Commission), request.Kind, id); err != nil {
 		return InventoryDetails{}, err
 	}
@@ -375,7 +439,8 @@ type InventoryEmployee struct {
 }
 
 func (i *InventoryService) GetInventoryEmployees() ([]InventoryEmployee, error) {
-	rows, err := i.db.Query("SELECT id,trim(last_name || ' ' || first_name || ' ' || COALESCE(middle_name,'')) FROM users WHERE is_approved=1 ORDER BY last_name,first_name")
+	// Жесткий фильтр: только Менеджеры
+	rows, err := i.db.Query("SELECT id,trim(last_name || ' ' || first_name || ' ' || COALESCE(middle_name,'')) FROM users WHERE is_approved=1 AND role='Менеджер' ORDER BY last_name,first_name")
 	if err != nil {
 		return nil, err
 	}
@@ -466,6 +531,7 @@ func (i *InventoryService) ApplyInventory(inventoryID int) error {
 
 	return nil
 }
+
 func (i *InventoryService) GetDraftInventory() (*InventoryDetails, error) {
 	var id int
 	err := i.db.QueryRow(`
