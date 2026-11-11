@@ -106,7 +106,7 @@ func TestProductMetadataSurvivesReceivingAndInventory(t *testing.T) {
 	if err := i.InitSchema(); err != nil {
 		t.Fatal(err)
 	}
-	draft, err := i.CreateInventory()
+	draft, err := i.CreateInventory("Test User")
 	if err != nil {
 		t.Fatal(err)
 	}

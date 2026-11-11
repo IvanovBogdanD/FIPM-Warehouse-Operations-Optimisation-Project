@@ -37,7 +37,7 @@ func TestInventoryCountCorrectionAndPersistence(t *testing.T) {
 	if err := i.InitSchema(); err != nil {
 		t.Fatal(err)
 	}
-	draft, err := i.CreateInventory()
+	draft, err := i.CreateInventory("Test User")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestInventoryFullAndValidation(t *testing.T) {
 	if err := i.InitSchema(); err != nil {
 		t.Fatal(err)
 	}
-	draft, _ := i.CreateInventory()
+	draft, _ := i.CreateInventory("Test User")
 	valid := InventoryParameters{Date: "2026-11-07", Responsible: "Иванов", Kind: "partial", ProductIDs: []int{1}}
 	for _, change := range []func(*InventoryParameters){
 		func(r *InventoryParameters) { r.Date = "2026-02-30" },

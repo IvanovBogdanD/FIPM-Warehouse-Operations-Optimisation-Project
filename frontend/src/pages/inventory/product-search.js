@@ -7,10 +7,9 @@ export function initInventoryProductSearch(onChoose, onResults) {
     inventorySearch = createProductSearch({
         prefix: 'inventory', 
         onResults,
+        keepOpenOnSelect: true, // ВКЛЮЧАЕМ РЕЖИМ МУЛЬТИВЫБОРА
         onChoose(product) {
             onChoose(product);
-            // УБРАНА СТРОКА byId('inventory-product-search').value = ''; 
-            // Теперь текст в поиске не стирается, и можно выбрать сразу несколько товаров
         },
     });
 }
