@@ -77,6 +77,7 @@ class Element {
             else this.children.push(child);
         }
     }
+    prepend(...children) { this.children.unshift(...children); }
     replaceChildren(...children) { this.children = children; }
     contains(element) { return this === element || this.children.some((child) => child.contains(element)); }
     focus() { this.focused = true; }
@@ -262,7 +263,7 @@ test('Запоздалый поиск не подменяет новый зап�
     slow.resolve({ products: [{ id: 2, name: 'Устаревший', count: 5 }], hasMore: false });
     await pending;
     const option = ui.elements['inventory-product-options'].children[0];
-    assert.equal(option.children[0].textContent, 'Молоко');
+    assert.equal(option.children[0].children[0].textContent, 'Молоко');
     await ui.elements['inventory-product-picker'].fire('keydown', { key: 'ArrowDown', target: input });
     assert.equal(option.focused, true);
     await ui.elements['inventory-product-picker'].fire('keydown', { key: 'Escape' });
@@ -321,9 +322,10 @@ test('Выбор товара безопасен, подсчёт начинае�
                 return { ...inventoryDraft(items), ...request };
             },
         });
+    await ui.elements['btn-create-inventory'].fire('click');
     await ui.elements['inventory-product-search'].fire('focus');
     const button = ui.elements['inventory-product-options'].children[0];
-    assert.equal(button.children[0].textContent, `${unsafe} · ART-1`);
+    assert.equal(button.children[0].children[0].textContent, `${unsafe} · ART-1`);
     await ui.elements['inventory-product-options'].fire('click', { target: button });
     await ui.elements['inventory-product-options'].fire('click', { target: button });
     assert.equal(ui.elements['inventory-selection-body'].children[0].children[1].textContent, unsafe);
@@ -342,7 +344,9 @@ test('Выбор товара безопасен, подсчёт начинае�
 
 test('Черновик прежней версии с товарами продолжает подсчёт без потери выбранных позиций', async () => {
     const legacy = inventoryDraft([{ productId: 1, productName: 'Гвозди', systemCount: 10, actualCount: null, difference: null, comment: '' }]);
-    const ui = await app({}, '#inventory', 'Кладовщик', { GetDraftInventory: async () => legacy });
+    const ui = await app({}, '#inventory', 'Кладовщик', { GetInventories: async () => [legacy], GetInventory: async () => legacy });
+    const resume = ui.elements['inventory-history-body'].children[0].children[4].children[0];
+    await ui.elements['inventory-history-body'].fire('click', { target: resume });
     assert.equal(ui.elements['inventory-counting'].hidden, false);
     assert.equal(ui.elements['inventory-items-body'].children[0].children[0].textContent, 'Гвозди');
 });
@@ -355,7 +359,7 @@ test('Подсчёт сохраняется без корректировки, �
     let applies = 0, saves = 0;
     const pending = deferred();
     const ui = await app({}, '#inventory', 'Кладовщик', {
-        GetDraftInventory: async () => details,
+        GetInventories: async () => [details],
         GetInventory: async () => details,
         SaveInventoryCounts: async (id, counts) => {
             assert.equal(id, 1); saves++;
@@ -364,6 +368,8 @@ test('Подсчёт сохраняется без корректировки, �
         },
         ApplyInventory: async () => { applies++; await pending.promise; details = { ...details, status: 'completed' }; },
     });
+    const resume = ui.elements['inventory-history-body'].children[0].children[4].children[0];
+    await ui.elements['inventory-history-body'].fire('click', { target: resume });
     assert.equal(ui.elements['inventory-counting'].hidden, false);
     await ui.elements['inventory-to-compare'].fire('click');
     assert.match(ui.elements['inventory-status'].textContent, /каждого товара/);

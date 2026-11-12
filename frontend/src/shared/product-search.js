@@ -93,7 +93,7 @@ export function createProductSearch({ prefix, inputId = `${prefix}-product-searc
             if (!button.classList.contains('selected-product')) {
                 button.classList.add('selected-product', 'bg-primary-subtle');
                 const check = document.createElement('span');
-                check.innerHTML = '✓';
+                check.textContent = '✓';
                 check.className = 'text-primary fw-bold me-2';
                 button.prepend(check);
             }

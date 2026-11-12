@@ -289,7 +289,7 @@ function renderInventorySelection() {
         if (!full) {
             const removeBtn = document.createElement('button');
             removeBtn.className = 'btn btn-sm btn-link text-danger p-0';
-            removeBtn.innerHTML = '✕';
+            removeBtn.textContent = '✕';
             removeBtn.title = 'Удалить из списка';
             removeBtn.dataset.removeId = product.id;
             removeCell.append(removeBtn);
@@ -354,7 +354,7 @@ function renderInventoryCounts() {
         const removeCell = document.createElement('td');
         const removeBtn = document.createElement('button');
         removeBtn.className = 'btn btn-sm btn-link text-danger p-0';
-        removeBtn.innerHTML = '✕';
+        removeBtn.textContent = '✕';
         removeBtn.title = 'Удалить из инвентаризации';
         removeBtn.dataset.removeId = item.productId;
         removeCell.append(removeBtn);

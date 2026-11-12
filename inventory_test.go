@@ -63,8 +63,10 @@ func TestInventoryCountCorrectionAndPersistence(t *testing.T) {
 	if *details.Items[0].ActualCount != 8 {
 		t.Fatal("failed save changed another item")
 	}
-	if _, err := i.PrepareInventory(draft.ID, request); err == nil {
-		t.Fatal("counted inventory restarted")
+	// Повторная подготовка разрешена (возврат к выбору товаров), но введённые данные подсчёта сохраняются.
+	details, err = i.PrepareInventory(draft.ID, request)
+	if err != nil || len(details.Items) != 2 || details.Items[0].ActualCount == nil || *details.Items[0].ActualCount != 8 || details.Items[0].Comment != "Повреждена упаковка" {
+		t.Fatalf("re-prepare lost counts: details=%+v error=%v", details, err)
 	}
 	if err := i.ApplyInventory(draft.ID); err != nil {
 		t.Fatal(err)
