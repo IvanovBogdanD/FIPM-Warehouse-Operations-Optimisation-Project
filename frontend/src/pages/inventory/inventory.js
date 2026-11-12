@@ -11,22 +11,83 @@ const inventorySelected = new Set();
 
 export function initInventory() {
     initInventoryProductSearch((product) => {
+        if (!inventoryChoices.find(p => p.id === product.id)) {
+            inventoryChoices.push(product);
+        }
         inventorySelected.add(product.id);
         renderInventorySelection();
-    }, (products) => { inventoryChoices = products; renderInventorySelection(); });
+    }, (products) => {
+        // Не перезаписываем inventoryChoices, чтобы таблица выбранных не пропадала
+    });
+
     byId('btn-create-inventory').addEventListener('click', () => runInventoryAction('btn-create-inventory', async () => {
-        const draft = await window.go.main.InventoryService.GetDraftInventory();
-        if (draft) await openInventory(draft);
-        else {
-            const created = await window.go.main.InventoryService.CreateInventory();
-            await openInventory(await window.go.main.InventoryService.GetInventory(created.id));
-        }
+        inventoryDetails = null;
+        inventoryChoices = [];
+        inventorySelected.clear();
+        
+        const user = JSON.parse(sessionStorage.getItem('user'));
+        const userName = [user.lastName, user.firstName, user.middleName].filter(Boolean).join(' ');
+
+        const created = await window.go.main.InventoryService.CreateInventory(userName);
+        await openInventory(await window.go.main.InventoryService.GetInventory(created.id));
     }));
+
+    byId('inventory-selection-body').addEventListener('click', (event) => {
+        const btn = event.target.closest('button[data-remove-id]');
+        if (btn) {
+            const id = Number(btn.dataset.removeId);
+            inventoryChoices = inventoryChoices.filter(p => p.id !== id);
+            inventorySelected.delete(id);
+            renderInventorySelection();
+        }
+    });
+
+    byId('inventory-items-body').addEventListener('click', async (event) => {
+        const btn = event.target.closest('button[data-remove-id]');
+        if (btn) {
+            if (!confirm('Удалить этот товар из инвентаризации?')) return;
+            const id = Number(btn.dataset.removeId);
+            try {
+                inventoryDetails = await window.go.main.InventoryService.DeleteInventoryItem(inventoryDetails.id, id);
+                renderInventoryCounts();
+            } catch (error) {
+                showError(byId('inventory-status'), error);
+            }
+        }
+    });
+
+    // Возврат к выбору: перезагружаем данные и список комиссии
+    byId('inventory-back-to-creation').addEventListener('click', async () => {
+        inventoryDetails = await window.go.main.InventoryService.GetInventory(inventoryDetails.id);
+        inventorySelected.clear();
+        inventoryChoices = inventoryDetails.items.map((item) => ({ 
+            id: item.productId, 
+            name: item.productName, 
+            count: item.systemCount, 
+            article: item.article, 
+            storageLocation: item.storageLocation 
+        }));
+        inventoryChoices.forEach((product) => inventorySelected.add(product.id));
+        
+        // Обновляем параметры (дату и комиссию)
+        byId('inventory-date').value = inventoryDetails.date || byId('inventory-date').value;
+        await renderCommissionList(inventoryDetails.commission);
+        
+        renderInventorySelection();
+        showInventoryStage('create');
+    });
+
+    byId('inventory-back-to-compare').addEventListener('click', () => {
+        showInventoryStage('compare');
+    });
+
     byId('inventory-show-history').addEventListener('click', () => runInventoryAction('inventory-show-history', showInventoryHistory));
+    
     byId('inventory-history-body').addEventListener('click', (event) => {
         const button = event.target.closest('button[data-inventory-id]');
         if (button) return runInventoryAction('btn-create-inventory', async () => openInventory(await window.go.main.InventoryService.GetInventory(Number(button.dataset.inventoryId))));
     });
+    
     byId('inventory-selection-body').addEventListener('change', (event) => {
         const id = Number(event.target.dataset.productId);
         const product = inventoryChoices.find((item) => item.id === id);
@@ -35,6 +96,7 @@ export function initInventory() {
         else inventorySelected.delete(id);
         renderInventorySelection();
     });
+    
     byId('inventory-select-shown').addEventListener('click', selectInventoryShown);
     byId('inventory-select-all').addEventListener('change', (event) => {
         for (const product of inventoryChoices) {
@@ -99,9 +161,7 @@ export async function loadInventory() {
     closeInventorySearch();
     showStatus(byId('inventory-status'), 'Загрузка инвентаризации...');
     try {
-        const draft = await window.go.main.InventoryService.GetDraftInventory();
-        if (draft) await openInventory(draft);
-        else await showInventoryHistory();
+        await showInventoryHistory();
         showStatus(byId('inventory-status'), '');
     } catch (error) { showError(byId('inventory-status'), error); }
 }
@@ -109,17 +169,24 @@ export async function loadInventory() {
 async function showInventoryHistory() {
     closeInventorySearch();
     const inventories = await window.go.main.InventoryService.GetInventories();
+    
     byId('inventory-empty').hidden = false;
     byId('inventory-active').hidden = true;
     byId('inventory-steps').hidden = true;
+    byId('btn-create-inventory').style.display = 'inline-block';
+    
     byId('inventory-title').textContent = 'Инвентаризация';
     byId('page-title').textContent = 'Инвентаризация';
     byId('inventory-subtitle').textContent = 'Проверки и сохранённые акты';
+    
     const body = byId('inventory-history-body');
     body.replaceChildren();
+    
     for (const inventory of inventories) {
         const row = document.createElement('tr');
-        for (const value of [inventoryNumber(inventory), inventory.date ? inventoryDate(inventory.date) : '-', inventory.responsible || 'Не указано', inventory.status === 'completed' ? 'Завершена' : 'Черновик']) row.append(inventoryCell(value));
+        for (const value of [inventoryNumber(inventory), inventory.date ? inventoryDate(inventory.date) : '-', inventory.responsible || 'Не указано', inventory.status === 'completed' ? 'Завершена' : 'Черновик']) {
+            row.append(inventoryCell(value));
+        }
         const cell = document.createElement('td');
         const button = document.createElement('button');
         button.type = 'button'; button.className = 'btn btn-outline-primary btn-sm';
@@ -136,31 +203,45 @@ async function openInventory(details) {
     inventoryChoices = details.items.map((item) => ({ id: item.productId, name: item.productName, count: item.systemCount, article: item.article, storageLocation: item.storageLocation }));
     inventoryChoices.forEach((product) => inventorySelected.add(product.id));
     byId('inventory-product-search').value = '';
+    
     if (details.status === 'completed') { showInventoryReport(); return; }
+    
     if (details.items.length > 0) {
         if (details.items.every((item) => item.actualCount !== null)) { renderInventoryComparison(); showInventoryStage('compare'); }
         else { renderInventoryCounts(); showInventoryStage('count'); }
         return;
     }
-    const user = JSON.parse(sessionStorage.getItem('user'));
+    
     const today = new Date();
     byId('inventory-date').value = details.date || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    byId('inventory-responsible').value = details.responsible || [user.lastName, user.firstName, user.middleName].filter(Boolean).join(' ');
     byId('inventory-kind-full').checked = details.kind === 'full';
     byId('inventory-kind-partial').checked = details.kind !== 'full';
+    
+    await renderCommissionList(details.commission);
+    
+    renderInventorySelection();
+    showInventoryStage('create');
+}
+
+// НОВАЯ ФУНКЦИЯ: заполняет выпадающий список сотрудников
+async function renderCommissionList(selectedCommission) {
     const employees = await window.go.main.InventoryService.GetInventoryEmployees();
     const commission = byId('inventory-commission');
     commission.replaceChildren();
     for (const employee of employees) {
-        const label = document.createElement('label'); label.className = 'dropdown-item d-flex gap-2 text-wrap';
-        const input = document.createElement('input'); input.type = 'checkbox'; input.className = 'form-check-input flex-shrink-0'; input.value = employee.name;
-        input.checked = (details.commission || '').split(', ').includes(employee.name);
-        const name = document.createElement('span'); name.textContent = employee.name;
-        label.append(input, name); commission.append(label);
+        const label = document.createElement('label'); 
+        label.className = 'dropdown-item d-flex gap-2 text-wrap';
+        const input = document.createElement('input'); 
+        input.type = 'checkbox'; 
+        input.className = 'form-check-input flex-shrink-0'; 
+        input.value = employee.name;
+        input.checked = (selectedCommission || '').split(', ').includes(employee.name);
+        const name = document.createElement('span'); 
+        name.textContent = employee.name;
+        label.append(input, name); 
+        commission.append(label);
     }
     updateInventoryCommission();
-    renderInventorySelection();
-    showInventoryStage('create');
 }
 
 function showInventoryStage(stage) {
@@ -168,6 +249,8 @@ function showInventoryStage(stage) {
     byId('inventory-empty').hidden = true;
     byId('inventory-active').hidden = false;
     byId('inventory-steps').hidden = false;
+    byId('btn-create-inventory').style.display = 'none';
+    
     const sections = { create: 'creation', count: 'counting', compare: 'reconciliation', report: 'report' };
     for (const [name, section] of Object.entries(sections)) {
         byId(`inventory-${section}`).hidden = name !== stage;
@@ -201,10 +284,21 @@ function renderInventorySelection() {
         checkbox.checked = full || inventorySelected.has(product.id); checkbox.disabled = full;
         checkbox.setAttribute('aria-label', `Выбрать: ${product.name}`);
         const choice = document.createElement('td'); choice.append(checkbox);
-        row.append(choice, inventoryCell(product.name, 'fw-semibold'), inventoryCell(product.article || '-'), inventoryCell(product.storageLocation || '-'), inventoryCell(product.count, 'text-end'));
+        
+        const removeCell = document.createElement('td');
+        if (!full) {
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'btn btn-sm btn-link text-danger p-0';
+            removeBtn.innerHTML = '✕';
+            removeBtn.title = 'Удалить из списка';
+            removeBtn.dataset.removeId = product.id;
+            removeCell.append(removeBtn);
+        }
+
+        row.append(choice, inventoryCell(product.name, 'fw-semibold'), inventoryCell(product.article || '-'), inventoryCell(product.storageLocation || '-'), inventoryCell(product.count, 'text-end'), removeCell);
         body.append(row);
     }
-    if (!inventoryChoices.length) { const row = document.createElement('tr'); const cell = inventoryCell('Нажмите на поиск, чтобы выбрать товары.'); cell.colSpan = 5; row.append(cell); body.append(row); }
+    if (!inventoryChoices.length) { const row = document.createElement('tr'); const cell = inventoryCell('Нажмите на поиск, чтобы выбрать товары.'); cell.colSpan = 6; row.append(cell); body.append(row); }
     const selected = inventoryChoices.filter((product) => inventorySelected.has(product.id)).length;
     byId('inventory-select-all').checked = full || (inventoryChoices.length > 0 && selected === inventoryChoices.length);
     byId('inventory-select-all').indeterminate = !full && selected > 0 && selected < inventoryChoices.length;
@@ -222,13 +316,20 @@ function updateInventoryCommission() {
 }
 
 async function startInventoryCount() {
+    const user = JSON.parse(sessionStorage.getItem('user'));
+    const userName = [user.lastName, user.firstName, user.middleName].filter(Boolean).join(' ');
+
     const request = {
-        date: byId('inventory-date').value, responsible: byId('inventory-responsible').value.trim(),
+        date: byId('inventory-date').value, 
+        responsible: userName,
         commission: selectedInventoryCommission().join(', '),
-        kind: byId('inventory-kind-full').checked ? 'full' : 'partial', productIds: Array.from(inventorySelected),
+        kind: byId('inventory-kind-full').checked ? 'full' : 'partial', 
+        productIds: Array.from(inventorySelected),
     };
-    if (!request.date || !request.responsible) throw new Error('Укажите дату и ФИО проводящего проверку.');
+    
+    if (!request.date) throw new Error('Укажите дату проведения.');
     if (request.kind === 'partial' && !request.productIds.length) throw new Error('Выберите товары для проверки.');
+    
     inventoryDetails = await window.go.main.InventoryService.PrepareInventory(inventoryDetails.id, request);
     renderInventoryCounts(); showInventoryStage('count');
 }
@@ -249,7 +350,24 @@ function renderInventoryCounts() {
     const body = byId('inventory-items-body'); body.replaceChildren();
     for (const item of inventoryDetails.items) {
         const row = document.createElement('tr'); row.dataset.productId = item.productId;
-        row.append(inventoryCell(item.productName, 'fw-semibold'), inventoryCell(item.storageLocation || '-'), inventoryCell(item.systemCount, 'text-end'), inventoryInputCell(item, 'actualCount'), inventoryInputCell(item, 'comment')); body.append(row);
+        
+        const removeCell = document.createElement('td');
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'btn btn-sm btn-link text-danger p-0';
+        removeBtn.innerHTML = '✕';
+        removeBtn.title = 'Удалить из инвентаризации';
+        removeBtn.dataset.removeId = item.productId;
+        removeCell.append(removeBtn);
+
+        row.append(
+            inventoryCell(item.productName, 'fw-semibold'), 
+            inventoryCell(item.storageLocation || '-'), 
+            inventoryCell(item.systemCount, 'text-end'), 
+            inventoryInputCell(item, 'actualCount'), 
+            inventoryInputCell(item, 'comment'),
+            removeCell
+        ); 
+        body.append(row);
     }
 }
 
@@ -325,5 +443,6 @@ function showInventoryCorrection() {
 
 function showInventoryReport() {
     renderInventoryReport(inventoryDetails);
+    byId('inventory-back-to-compare').hidden = inventoryDetails.status === 'completed';
     showInventoryStage('report');
 }

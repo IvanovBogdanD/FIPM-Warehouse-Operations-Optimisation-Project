@@ -1,7 +1,7 @@
 import { byId, showError, showStatus } from './dom.js';
 import { callBackend } from './api.js';
 
-export function createProductSearch({ prefix, inputId = `${prefix}-product-search`, onChoose, onResults = () => {}, onError = () => {} }) {
+export function createProductSearch({ prefix, inputId = `${prefix}-product-search`, onChoose, onResults = () => {}, onError = () => {}, keepOpenOnSelect = false }) {
     const input = byId(inputId);
     const picker = byId(`${prefix}-product-picker`);
     const results = byId(`${prefix}-search-results`);
@@ -43,12 +43,20 @@ export function createProductSearch({ prefix, inputId = `${prefix}-product-searc
                 button.dataset.productId = product.id;
                 button.setAttribute('role', 'option');
                 button.setAttribute('aria-selected', 'false');
+                
+                const leftPart = document.createElement('div');
+                leftPart.className = 'd-flex align-items-center flex-grow-1';
+                
                 const name = document.createElement('span');
                 name.textContent = product.article ? `${product.name} · ${product.article}` : product.name;
+                
+                leftPart.append(name);
+                
                 const count = document.createElement('span');
                 count.className = 'badge text-bg-light border text-nowrap';
                 count.textContent = `${product.count} шт.`;
-                button.append(name, count);
+                
+                button.append(leftPart, count);
                 options.append(button);
                 cursor = product.id;
                 products.set(product.id, product);
@@ -71,13 +79,28 @@ export function createProductSearch({ prefix, inputId = `${prefix}-product-searc
     });
     byId(`${prefix}-product-search-btn`).addEventListener('click', () => load());
     more.addEventListener('click', () => load({ append: true }));
+    
     options.addEventListener('click', (event) => {
         const button = event.target.closest('button[data-product-id]');
         if (!button) return;
         const product = products.get(Number(button.dataset.productId));
-        close();
+        
+        // Если окно должно закрываться (для других страниц)
+        if (!keepOpenOnSelect) {
+            close();
+        } else {
+            // Визуальная галочка, если окно остается открытым
+            if (!button.classList.contains('selected-product')) {
+                button.classList.add('selected-product', 'bg-primary-subtle');
+                const check = document.createElement('span');
+                check.innerHTML = '✓';
+                check.className = 'text-primary fw-bold me-2';
+                button.prepend(check);
+            }
+        }
         onChoose(product);
     });
+    
     picker.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') close();
         if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;

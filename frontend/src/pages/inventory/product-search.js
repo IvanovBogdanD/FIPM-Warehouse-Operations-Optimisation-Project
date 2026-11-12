@@ -5,10 +5,11 @@ let inventorySearch;
 
 export function initInventoryProductSearch(onChoose, onResults) {
     inventorySearch = createProductSearch({
-        prefix: 'inventory', onResults,
+        prefix: 'inventory', 
+        onResults,
+        keepOpenOnSelect: true, // ВКЛЮЧАЕМ РЕЖИМ МУЛЬТИВЫБОРА
         onChoose(product) {
             onChoose(product);
-            byId('inventory-product-search').value = '';
         },
     });
 }
