@@ -14,18 +14,19 @@ type OrderItem struct {
 }
 
 type Order struct {
-	ID           string      `json:"id"`
-	Number       string      `json:"number"`
-	Type         string      `json:"type"`
-	Status       string      `json:"status"`
-	CreatedAt    time.Time   `json:"createdAt"`
-	ShipmentDate *time.Time  `json:"shipmentDate"`
-	Responsible  string      `json:"responsible"`
-	Location     string      `json:"location"`
-	Address      string      `json:"address"`
-	Note         string      `json:"note"`
-	CompletedBy  string      `json:"completedBy"`
-	Items        []OrderItem `json:"items"`
+	ResponsibleID int         `json:"responsibleId,omitempty"`
+	ID            string      `json:"id"`
+	Number        string      `json:"number"`
+	Type          string      `json:"type"`
+	Status        string      `json:"status"`
+	CreatedAt     time.Time   `json:"createdAt"`
+	ShipmentDate  *time.Time  `json:"shipmentDate"`
+	Responsible   string      `json:"responsible"`
+	Location      string      `json:"location"`
+	Address       string      `json:"address"`
+	Note          string      `json:"note"`
+	CompletedBy   string      `json:"completedBy"`
+	Items         []OrderItem `json:"items"`
 }
 
 func (o ReceivingOrder) toOrder() Order {

@@ -1,3 +1,4 @@
+import { createProductSearch } from '../../shared/product-search.js';
 import { callBackend } from '../../shared/api.js';
 import { byId, showError, showStatus } from '../../shared/dom.js';
 import { showModal } from '../../shared/modal.js';
@@ -5,6 +6,8 @@ import { createOrderCell, createStockChangeCell, openOrder, orderQuantity, ORDER
 
 let formType = 'shipment';
 let formStocks = [];
+let formManagers = [];
+let formSearch;
 let formItems = [];
 let formLoaded = false;
 let formBusy = false;
@@ -22,9 +25,10 @@ function stockOf(item) {
 export function buildOrderRequest() {
     const date = byId('order-form-date').value;
     const address = byId('order-form-address').value.trim();
-    const responsible = byId('order-form-responsible').value.trim();
+    const manager = formManagers.find((item) => item.id === Number(byId('order-form-responsible').value));
     if (!date) throw new Error('Укажите дату.');
-    if (!responsible || !address) throw new Error('Укажите ФИО ответственного и адрес.');
+    if (!manager) throw new Error('Выберите ответственного менеджера.');
+    if (!address) throw new Error('Укажите адрес доставки или объекта.');
     if (formItems.length === 0) throw new Error('Добавьте хотя бы один товар.');
     for (const item of formItems) {
         const stock = stockOf(item);
@@ -32,13 +36,14 @@ export function buildOrderRequest() {
         if (Number(item.quantity) > stock.free) throw new Error(`Исправьте количество «${stock.name}»: свободно только ${stock.free} шт.`);
     }
     return {
-        type: formType, date, address, responsible, note: byId('order-form-note').value.trim(),
+        type: formType, date, address, responsibleId: manager.id, note: byId('order-form-note').value.trim(),
         items: formItems.map((item) => ({ productId: item.productId, quantity: item.quantity })),
     };
 }
 
 function updateOrderFormControls() {
     byId('order-form-fields').disabled = formBusy || !formLoaded;
+    byId('order-form-product').disabled = formBusy || !formLoaded;
 }
 
 function renderOrderFormSummary() {
@@ -48,7 +53,7 @@ function renderOrderFormSummary() {
     for (const [label, value] of [
         ['Тип', ORDER_TYPES[formType]], ['Позиций', String(formItems.length)],
         ['Всего единиц', `${validItems.reduce((sum, item) => sum + Number(item.quantity), 0)} шт.`],
-        ['Дата', date ? date.split('-').reverse().join('.') : '—'],
+        ['Дата', date ? date.split('-').reverse().join('.') : '-'],
     ]) {
         const term = document.createElement('dt');
         const definition = document.createElement('dd');
@@ -58,19 +63,15 @@ function renderOrderFormSummary() {
     }
 }
 
-function renderProductOptions() {
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = 'Добавить товар…';
-    const options = formStocks.filter((stock) => !formItems.some((item) => item.productId === stock.id)).map((stock) => {
-        const option = document.createElement('option');
-        option.value = String(stock.id);
-        option.textContent = `${stock.name} — свободно ${stock.free}`;
-        option.disabled = stock.free <= 0;
+function renderManagerOptions() {
+    const selected = byId('order-form-responsible').value;
+    const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Выберите менеджера';
+    const options = formManagers.map((manager) => {
+        const option = document.createElement('option'); option.value = String(manager.id); option.textContent = manager.name;
         return option;
     });
-    byId('order-form-product').replaceChildren(placeholder, ...options);
-    byId('order-form-product').value = '';
+    byId('order-form-responsible').replaceChildren(placeholder, ...options);
+    byId('order-form-responsible').value = selected;
 }
 
 function createQuantityButton(text, label, onClick) {
@@ -94,7 +95,7 @@ function createItemRow(item) {
         const tooMuch = valid && Number(item.quantity) > stock.free;
         input.classList.toggle('is-invalid', !valid || tooMuch);
         left.classList.toggle('text-danger', tooMuch);
-        left.textContent = valid ? String(stock.free - Number(item.quantity)) : '—';
+        left.textContent = valid ? String(stock.free - Number(item.quantity)) : '-';
         problem.textContent = tooMuch ? 'Больше свободного остатка' : valid ? '' : 'Введите целое число больше нуля';
         renderOrderFormSummary();
     };
@@ -124,7 +125,7 @@ function createItemRow(item) {
         createQuantityButton('+', `Увеличить: ${stock.name}`, () => setQuantity(String((Number(item.quantity) || 0) + 1))),
     );
 
-    const remove = createQuantityButton('✕', `Убрать: ${stock.name}`, () => {
+    const remove = createQuantityButton('Убрать', `Убрать: ${stock.name}`, () => {
         formItems = formItems.filter((other) => other !== item);
         renderOrderForm();
     });
@@ -140,7 +141,6 @@ function createItemRow(item) {
 }
 
 function renderOrderForm() {
-    renderProductOptions();
     byId('order-form-items').replaceChildren(...formItems.map(createItemRow));
     byId('order-form-items-empty').hidden = formItems.length > 0;
     for (const item of formItems) item.refresh();
@@ -149,6 +149,7 @@ function renderOrderForm() {
 
 export async function loadOrderForm(type) {
     const request = ++formRequest;
+    formSearch.close();
     formType = type;
     byId('order-form-type-shipment').classList.toggle('active', type === 'shipment');
     byId('order-form-type-writeoff').classList.toggle('active', type === 'writeoff');
@@ -158,13 +159,15 @@ export async function loadOrderForm(type) {
     updateOrderFormControls();
     showStatus(byId('order-form-status'), 'Загрузка товаров…');
     try {
-        const stocks = await callBackend('GetProductStocks');
+        const [stocks, managers] = await Promise.all([callBackend('GetProductStocks'), callBackend('GetManagers')]);
         if (request !== formRequest) return;
         formStocks = stocks;
+        formManagers = managers;
+        renderManagerOptions();
         formItems = formItems.filter((item) => stockOf(item));
-        formLoaded = stocks.length > 0;
+        formLoaded = stocks.length > 0 && managers.length > 0;
         renderOrderForm();
-        showStatus(byId('order-form-status'), stocks.length ? '' : 'Каталог пуст. Создать заказ нельзя.');
+        showStatus(byId('order-form-status'), !stocks.length ? 'Каталог пуст. Создать заказ нельзя.' : !managers.length ? 'Нет одобренных менеджеров. Создать заказ нельзя.' : '');
     } catch (error) {
         if (request !== formRequest) return;
         showError(byId('order-form-status'), error);
@@ -215,11 +218,19 @@ export function initOrderForm() {
     byId('order-form').addEventListener('submit', submitOrderForm);
     byId('order-form-reload').addEventListener('click', () => loadOrderForm(formType));
     byId('order-form-date').addEventListener('input', renderOrderFormSummary);
-    byId('order-form-product').addEventListener('change', () => {
-        const productId = Number(byId('order-form-product').value);
-        if (!productId) return;
-        formItems = [...formItems, { productId, quantity: '1' }];
-        renderOrderForm();
+    formSearch = createProductSearch({
+        prefix: 'order-form', inputId: 'order-form-product',
+        quantityLabel(product) { return `${formStocks.find((stock) => stock.id === product.id).free} свободно`; },
+        onChoose(product) {
+            if (formItems.some((item) => item.productId === product.id)) {
+                showStatus(byId('order-form-status'), 'Товар уже добавлен. Измените количество в его строке.'); return;
+            }
+            const stock = formStocks.find((item) => item.id === product.id);
+            if (stock.free <= 0) { showError(byId('order-form-status'), new Error('У товара нет свободного остатка.')); return; }
+            formItems.push({ productId: product.id, quantity: '1' });
+            byId('order-form-product').value = '';
+            renderOrderForm();
+        },
     });
     byId('order-created-list').addEventListener('click', () => { location.hash = '#orders'; });
     byId('order-created-open').addEventListener('click', () => openOrder(createdOrderId));

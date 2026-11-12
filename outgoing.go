@@ -17,12 +17,13 @@ type OutgoingItemRequest struct {
 }
 
 type OutgoingRequest struct {
-	Type        string                `json:"type"`
-	Date        string                `json:"date"`
-	Address     string                `json:"address"`
-	Responsible string                `json:"responsible"`
-	Note        string                `json:"note"`
-	Items       []OutgoingItemRequest `json:"items"`
+	ResponsibleID int                   `json:"responsibleId"`
+	Type          string                `json:"type"`
+	Date          string                `json:"date"`
+	Address       string                `json:"address"`
+	Responsible   string                `json:"responsible"`
+	Note          string                `json:"note"`
+	Items         []OutgoingItemRequest `json:"items"`
 }
 
 type CompleteOutgoingRequest struct {
@@ -101,9 +102,12 @@ func (s *DBService) CreateOutgoing(request OutgoingRequest) (OutgoingResult, err
 		return OutgoingResult{}, errors.New("выберите отгрузку или списание")
 	}
 	address := strings.TrimSpace(request.Address)
-	responsible := strings.TrimSpace(request.Responsible)
-	if address == "" || responsible == "" {
-		return OutgoingResult{}, errors.New("укажите адрес и ФИО ответственного")
+	if address == "" {
+		return OutgoingResult{}, errors.New("укажите адрес доставки или объекта")
+	}
+	manager, err := s.findManager(request.ResponsibleID, request.Responsible)
+	if err != nil {
+		return OutgoingResult{}, err
 	}
 	date, err := parseOrderDate(request.Date)
 	if err != nil {
@@ -145,7 +149,7 @@ func (s *DBService) CreateOutgoing(request OutgoingRequest) (OutgoingResult, err
 	id := fmt.Sprintf("%s-%d-%04d", prefix, now.Year(), s.orderSequence)
 	order := Order{
 		ID: id, Number: id, Type: request.Type, Status: "reserved", CreatedAt: now, ShipmentDate: &date,
-		Responsible: responsible, Address: address, Note: strings.TrimSpace(request.Note), Items: items,
+		Responsible: manager.Name, ResponsibleID: manager.ID, Address: address, Note: strings.TrimSpace(request.Note), Items: items,
 	}
 	if s.outgoing == nil {
 		s.outgoing = make(map[string]Order)
@@ -164,6 +168,9 @@ func (s *DBService) CompleteOutgoing(id string, request CompleteOutgoingRequest)
 	}
 	if order.Status != "reserved" {
 		return OutgoingResult{}, errors.New("заказ уже завершён или отменён")
+	}
+	if _, err := s.findManager(order.ResponsibleID, ""); err != nil {
+		return OutgoingResult{}, err
 	}
 	completedBy := strings.TrimSpace(request.CompletedBy)
 	if completedBy == "" {

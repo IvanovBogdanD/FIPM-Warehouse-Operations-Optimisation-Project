@@ -157,11 +157,13 @@ async function app(service = {}, hash = '#products', role = 'Менеджер', 
         async navigate(hash) { currentHash = hash; await window.fire('hashchange'); },
         async fillOrderForm(productId = '1') {
             elements['order-form-date'].value = '2026-11-20';
-            elements['order-form-responsible'].value = ' Петрова А.С. ';
+            elements['order-form-responsible'].value = '2';
             elements['order-form-address'].value = ' ул. Складская, 14 ';
             elements['order-form-note'].value = ' До 12:00 ';
-            elements['order-form-product'].value = productId;
-            await elements['order-form-product'].fire('change');
+            await elements['order-form-product'].fire('focus');
+            const button = elements['order-form-product-options'].children.find((item) => Number(item.dataset.productId) === Number(productId));
+            assert.ok(button, 'Товар доступен в поиске отгрузки');
+            await elements['order-form-product-options'].fire('click', { target: button });
         },
         quantityInput(index = 0) {
             return elements['order-form-items'].children[index].children[2].children[0].children[1];
@@ -496,7 +498,7 @@ test('Навигация не дублирует обработчики поис
 
 test('Главная открывается по умолчанию и показывает остатки из SQLite', async () => {
     const unsafeName = '<img src=x onerror=alert(1)>';
-    const ui = await app({ GetAllProducts: async () => [product(25), { id: 2, name: unsafeName, count: 0 }] }, '');
+    const ui = await app({ GetProductStocks: async () => [stock(1, 'Молоко', 25), stock(2, unsafeName, 0)] }, '');
     assert.equal(ui.elements['home-page'].hidden, false);
     assert.equal(ui.elements['catalog-page'].hidden, true);
     assert.equal(ui.elements['home-total'].textContent, '25');
@@ -514,7 +516,7 @@ test('Главная открывается по умолчанию и пока�
 
 test('Главная различает пустой каталог и ошибку загрузки, запрос можно повторить', async () => {
     let failed = true;
-    const ui = await app({ GetAllProducts: async () => { if (failed) throw new Error('SQLite read'); return []; } }, '#home');
+    const ui = await app({ GetProductStocks: async () => { if (failed) throw new Error('SQLite read'); return []; } }, '#home');
     assert.match(ui.elements['home-status'].textContent, /SQLite read/);
     assert.equal(ui.elements['home-total'].textContent, 'Недоступно');
     failed = false;
@@ -527,7 +529,7 @@ test('Главная различает пустой каталог и ошиб�
 test('Запоздалый ответ не подменяет обновлённую сводку главной', async () => {
     const slow = deferred();
     let requests = 0;
-    const ui = await app({ GetAllProducts: () => ++requests === 1 ? slow.promise : Promise.resolve([product(50)]) }, '#home');
+    const ui = await app({ GetProductStocks: () => ++requests === 1 ? slow.promise : Promise.resolve([stock(1, 'Молоко', 50)]) }, '#home');
     await ui.elements['reload-home'].fire('click');
     slow.resolve([product(10)]);
     await tick();
@@ -572,6 +574,7 @@ for (const destination of ['#products', '#product/1', '#home']) {
         let count = 10;
         const ui = await app({
             GetAllProducts: async () => [product(count)], SearchProductsPage: async () => ({ products: [product(count)], hasMore: false }),
+            GetProductStocks: async () => [stock(1, 'Молоко', count)],
             GetProductStock: async () => stock(1, 'Молоко', count), CompleteReceiving: () => completion.promise,
         });
         await ui.draft();
@@ -988,7 +991,7 @@ test('Форма заказа подставляет сегодняшнюю да
     assert.equal(ui.navLinks[2]['aria-current'], 'page');
     assert.equal(ui.elements['order-form-items-empty'].hidden, false);
 
-    ui.elements['order-form-responsible'].value = 'Петрова';
+    ui.elements['order-form-responsible'].value = '2';
     ui.elements['order-form-address'].value = 'Адрес';
     await ui.elements['order-form'].fire('submit');
     assert.match(ui.elements['order-form-status'].textContent, /хотя бы один товар/);
@@ -1026,12 +1029,16 @@ test('Форма заказа подставляет сегодняшнюю да
 });
 
 test('Форма заказа добавляет, меняет и убирает товары без потери ввода', async () => {
-    const ui = await app({ GetProductStocks: async () => [stock(), stock(2, 'Хлеб', 5), stock(3, 'Соль', 0)] }, '#orders/new');
-    const options = () => ui.elements['order-form-product'].children.map((option) => option.textContent);
-    assert.deepEqual(options(), ['Добавить товар…', 'Молоко — свободно 10', 'Хлеб — свободно 5', 'Соль — свободно 0']);
-    assert.equal(ui.elements['order-form-product'].children[3].disabled, true);
+    const stocks = [stock(), stock(2, 'Хлеб', 5), stock(3, 'Соль', 0)];
+    const ui = await app({ GetProductStocks: async () => stocks, SearchProductsPage: async () => ({ products: stocks, hasMore: false }) }, '#orders/new');
+    await ui.elements['order-form-product'].fire('focus');
+    const options = () => ui.elements['order-form-product-options'].children;
+    assert.equal(options().length, 3);
+    assert.equal(options()[2].children[1].textContent, '0 свободно');
+    await ui.elements['order-form-product-options'].fire('click', { target: options()[2] });
+    assert.equal(ui.elements['order-form-items'].children.length, 0);
+    assert.match(ui.elements['order-form-status'].textContent, /нет свободного остатка/);
     await ui.fillOrderForm('1');
-    assert.deepEqual(options(), ['Добавить товар…', 'Хлеб — свободно 5', 'Соль — свободно 0']);
     assert.equal(ui.elements['order-form-items-empty'].hidden, true);
 
     const input = ui.quantityInput();
@@ -1051,7 +1058,8 @@ test('Форма заказа добавляет, меняет и убирает
     await ui.elements['order-form-items'].children[0].children[4].children[0].fire('click');
     assert.equal(ui.elements['order-form-items'].children.length, 0);
     assert.equal(ui.elements['order-form-items-empty'].hidden, false);
-    assert.equal(options().length, 4);
+    await ui.elements['order-form-product'].fire('focus');
+    assert.equal(options().length, 3);
 });
 
 test('Создание заказа бронирует товар, показывает окно и очищает форму', async () => {
@@ -1068,7 +1076,7 @@ test('Создание заказа бронирует товар, показы�
     assert.equal(requests.length, 1);
     assert.equal(ui.elements['order-form-fields'].disabled, true);
     assert.deepEqual(JSON.parse(JSON.stringify(requests[0])), {
-        type: 'shipment', date: '2026-11-20', address: 'ул. Складская, 14', responsible: 'Петрова А.С.', note: 'До 12:00',
+        type: 'shipment', date: '2026-11-20', address: 'ул. Складская, 14', responsibleId: 2, note: 'До 12:00',
         items: [{ productId: 1, quantity: '4' }],
     });
     creation.resolve({ order: shipment(), stock: [stock(1, 'Молоко', 10, 4)] });
@@ -1134,7 +1142,7 @@ test('Ошибки загрузки и создания заказа видны,
     assert.match(ui.elements['order-form-status'].textContent, /недостаточно свободного остатка/);
     assert.equal(ui.elements['order-created-modal'].modalOpen, undefined);
     assert.equal(ui.elements['order-form-items'].children.length, 1);
-    assert.equal(ui.elements['order-form-responsible'].value, ' Петрова А.С. ');
+    assert.equal(ui.elements['order-form-responsible'].value, '2');
     assert.equal(ui.elements['order-form-fields'].disabled, false);
 });
 
@@ -1288,11 +1296,11 @@ test('Главная показывает свободный остаток, б�
     assert.match(html, /href="#orders\/new\/writeoff" class="info-box/);
 });
 
-test('Главная не выдаёт нули за данные при ошибке', async () => {
+test('Ошибка остатков не подменяется нулями и не скрывает доступные показатели заказов', async () => {
     const ui = await app({ GetProductStocks: async () => { throw new Error('SQLite read'); } }, '#home');
     assert.equal(ui.elements['home-free'].textContent, 'Недоступно');
     assert.equal(ui.elements['home-reserved'].textContent, 'Недоступно');
-    assert.equal(ui.elements['home-shipments-today'].textContent, 'Недоступно');
+    assert.equal(ui.elements['home-shipments-today'].textContent, '0');
     assert.match(ui.elements['home-status'].textContent, /SQLite read/);
 });
 
@@ -1371,4 +1379,55 @@ test('Без одобренных менеджеров приёмка недос
     const ui = await app({ GetManagers: async () => [] }, '#orders/receiving');
     assert.equal(ui.elements['receiving-fields'].disabled, true);
     assert.match(ui.elements['receiving-status'].textContent, /Нет одобренных менеджеров/);
+});
+
+
+test('Отгрузка требует менеджера и не позволяет отправить подставленное имя', async () => {
+    let creates = 0;
+    const ui = await app({ CreateOutgoing: async () => { creates++; return { order: shipment(), stock: [stock()] }; } }, '#orders/new');
+    await ui.fillOrderForm();
+    ui.elements['order-form-responsible'].value = 'Петрова А.С.';
+    await ui.elements['order-form'].fire('submit');
+    assert.match(ui.elements['order-form-status'].textContent, /менеджера/);
+    assert.equal(creates, 0);
+    const blocked = await app({ GetManagers: async () => [] }, '#orders/new');
+    assert.equal(blocked.elements['order-form-fields'].disabled, true);
+    assert.match(blocked.elements['order-form-status'].textContent, /Нет одобренных менеджеров/);
+});
+
+test('Главная показывает доступные действия, приветствие и последние заказы', async () => {
+    const ui = await app({ GetOrders: async () => [shipment(), order('pending')] }, '#home');
+    assert.equal(ui.elements['home-greeting'].textContent, 'Добрый день, Иван!');
+    assert.equal(ui.elements['home-actions'].hidden, false);
+    assert.equal(ui.elements['home-recent-orders'].children.length, 2);
+    assert.equal(ui.elements['home-recent-orders'].children[0].children[0].children[0].textContent, 'З-2026-0001');
+    assert.match(html, /href="#orders\/receiving" class="info-box/);
+    assert.doesNotMatch(html, /<strong>Инвентаризация<\/strong><span class="text-body-secondary small">В разработке/);
+    await ui.elements['home-recent-orders'].children[0].fire('click');
+    await tick();
+    assert.equal(ui.location.hash, '#orders');
+    const admin = await app({}, '#home', 'Администратор');
+    assert.equal(admin.elements['home-actions'].hidden, true);
+});
+
+test('Ошибка обновления главной убирает устаревшие отгрузки и последние заказы', async () => {
+    let failed = false;
+    const ui = await app({ GetOrders: async () => { if (failed) throw new Error('Ошибка заказов'); return [shipment()]; } }, '#home');
+    assert.equal(ui.elements['home-recent-orders'].children.length, 1);
+    assert.equal(ui.elements['home-shipments'].children.length, 1);
+    failed = true;
+    await ui.elements['reload-home'].fire('click');
+    assert.equal(ui.elements['home-recent-orders'].children.length, 0);
+    assert.equal(ui.elements['home-shipments'].children.length, 0);
+    assert.match(ui.elements['home-recent-empty'].textContent, /Не удалось загрузить/);
+});
+
+
+test('При ошибке остатков главная сохраняет доступные данные заказов', async () => {
+    const ui = await app({ GetProductStocks: async () => { throw new Error('SQLite read'); }, GetOrders: async () => [shipment()] }, '#home');
+    assert.equal(ui.elements['home-total'].textContent, 'Недоступно');
+    assert.equal(ui.elements['home-recent-orders'].children.length, 1);
+    assert.equal(ui.elements['home-shipments'].children.length, 1);
+    assert.match(ui.elements['home-status'].textContent, /SQLite read/);
+    assert.equal(ui.elements['home-orders-status'].textContent, '');
 });
