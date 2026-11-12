@@ -1,7 +1,7 @@
 <section id="home-page" aria-label="Главная">
   <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
     <div>
-      <h1 class="h3 fw-bold mb-1">Добрый день!</h1>
+      <h1 id="home-greeting" class="h3 fw-bold mb-1">Добрый день!</h1>
       <p id="home-date" class="text-body-secondary mb-0"></p>
     </div>
     <span class="btn btn-outline-secondary disabled" aria-disabled="true">Склад: текущая база</span>
@@ -46,7 +46,7 @@
     </div>
   </div>
 
-  <div class="row g-3 mb-4" aria-label="Быстрые действия">
+  <div id="home-actions" class="row g-3 mb-4" aria-label="Быстрые действия">
     <div class="col-sm-6 col-xl-3">
       <a href="#products" class="info-box border h-100 mb-0 text-decoration-none">
         <span class="info-box-icon bg-primary-subtle text-primary">{{grid}}</span>
@@ -66,10 +66,10 @@
       </a>
     </div>
     <div class="col-sm-6 col-xl-3">
-      <button class="info-box border h-100 mb-0 text-start" disabled>
+      <a href="#orders/receiving" class="info-box border h-100 mb-0 text-decoration-none">
         <span class="info-box-icon bg-success-subtle text-success">{{clipboard-check}}</span>
-        <span class="info-box-content"><strong>Инвентаризация</strong><span class="text-body-secondary small">В разработке</span></span>
-      </button>
+        <span class="info-box-content"><strong>Приёмка товаров</strong><span class="text-body-secondary small">Поступление на склад</span></span>
+      </a>
     </div>
   </div>
 
@@ -104,10 +104,11 @@
         </div>
       </section>
       <section class="card shadow-none border">
-        <div class="card-header bg-body py-3"><h2 class="card-title fw-semibold">Последние действия</h2></div>
+        <div class="card-header bg-body py-3"><h2 class="card-title fw-semibold">Последние заказы</h2></div>
         <div class="card-body">
-          <p class="mb-1">История действий пока недоступна</p>
-          <p class="text-body-secondary small mb-0">Здесь появятся записи после подключения учёта операций.</p>
+          <p id="home-orders-status" role="status" aria-live="polite"></p>
+          <p id="home-recent-empty" class="text-body-secondary mb-0">Заказов в текущем запуске пока нет.</p>
+          <div id="home-recent-orders" class="list-group list-group-flush"></div>
         </div>
       </section>
     </div>

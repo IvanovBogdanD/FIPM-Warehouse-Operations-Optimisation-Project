@@ -28,7 +28,7 @@ func completeRequest() CompleteOutgoingRequest {
 }
 
 func TestOutgoingValidation(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	for name, change := range map[string]func(*OutgoingRequest){
 		"type":        func(r *OutgoingRequest) { r.Type = "gift" },
 		"address":     func(r *OutgoingRequest) { r.Address = " " },
@@ -62,7 +62,7 @@ func TestOutgoingValidation(t *testing.T) {
 }
 
 func TestOutgoingReservesWithoutChangingStock(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	beforeSchema := schema(t, s.db)
 	result, err := s.CreateOutgoing(outgoingRequest())
 	if err != nil {
@@ -109,7 +109,7 @@ func TestOutgoingReservesWithoutChangingStock(t *testing.T) {
 }
 
 func TestOutgoingShipmentWritesOffAndClearsReservation(t *testing.T) {
-	s, path := testStore(t)
+	s, path := testOrderStore(t)
 	created, err := s.CreateOutgoing(outgoingRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +147,7 @@ func TestOutgoingShipmentWritesOffAndClearsReservation(t *testing.T) {
 }
 
 func TestOutgoingWriteoff(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	request := outgoingRequest()
 	request.Type = "writeoff"
 	request.Note = "брак"
@@ -166,7 +166,7 @@ func TestOutgoingWriteoff(t *testing.T) {
 }
 
 func TestOutgoingCancelReleasesReservation(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	created, err := s.CreateOutgoing(outgoingRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -189,7 +189,7 @@ func TestOutgoingCancelReleasesReservation(t *testing.T) {
 }
 
 func TestCompleteOutgoingValidation(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	created, err := s.CreateOutgoing(outgoingRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -208,7 +208,7 @@ func TestCompleteOutgoingValidation(t *testing.T) {
 }
 
 func TestCompleteOutgoingRollsBackAllItems(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	s.db.SetMaxOpenConns(1)
 	created, err := s.CreateOutgoing(outgoingRequest())
 	if err != nil {
@@ -234,7 +234,7 @@ func TestCompleteOutgoingRollsBackAllItems(t *testing.T) {
 }
 
 func TestCompleteOutgoingSQLiteFailureAndRetry(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	created, err := s.CreateOutgoing(outgoingRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -263,7 +263,7 @@ func TestCompleteOutgoingSQLiteFailureAndRetry(t *testing.T) {
 }
 
 func TestConcurrentOutgoingNeverOverReserves(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	s.db.SetMaxOpenConns(1)
 	request := outgoingRequest()
 	request.Items = []OutgoingItemRequest{{ProductID: 1, Quantity: "1"}}

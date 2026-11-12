@@ -1,7 +1,7 @@
 import { byId, showError, showStatus } from './dom.js';
 import { callBackend } from './api.js';
 
-export function createProductSearch({ prefix, inputId = `${prefix}-product-search`, onChoose, onResults = () => {}, onError = () => {}, keepOpenOnSelect = false }) {
+export function createProductSearch({ prefix, inputId = `${prefix}-product-search`, onChoose, onResults = () => {}, onError = () => {}, keepOpenOnSelect = false, quantityLabel = (product) => `${product.count} шт.` }) {
     const input = byId(inputId);
     const picker = byId(`${prefix}-product-picker`);
     const results = byId(`${prefix}-search-results`);
@@ -54,7 +54,7 @@ export function createProductSearch({ prefix, inputId = `${prefix}-product-searc
                 
                 const count = document.createElement('span');
                 count.className = 'badge text-bg-light border text-nowrap';
-                count.textContent = `${product.count} шт.`;
+                count.textContent = quantityLabel(product);
                 
                 button.append(leftPart, count);
                 options.append(button);
@@ -93,7 +93,7 @@ export function createProductSearch({ prefix, inputId = `${prefix}-product-searc
             if (!button.classList.contains('selected-product')) {
                 button.classList.add('selected-product', 'bg-primary-subtle');
                 const check = document.createElement('span');
-                check.innerHTML = '✓';
+                check.textContent = '✓';
                 check.className = 'text-primary fw-bold me-2';
                 button.prepend(check);
             }

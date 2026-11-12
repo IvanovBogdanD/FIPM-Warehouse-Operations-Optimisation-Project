@@ -23,8 +23,8 @@
                   <input id="order-form-date" class="form-control" type="date" required>
                 </div>
                 <div class="col-md-6">
-                  <label class="form-label" for="order-form-responsible">ФИО ответственного</label>
-                  <input id="order-form-responsible" class="form-control" type="text" required>
+                  <label class="form-label" for="order-form-responsible">Ответственный менеджер</label>
+                  <select id="order-form-responsible" class="form-select" required><option value="">Выберите менеджера</option></select>
                 </div>
                 <div class="col-12">
                   <label class="form-label" for="order-form-address">Адрес доставки / объекта</label>
@@ -42,9 +42,17 @@
           <section class="card shadow-none border mb-0">
             <div class="card-header bg-body d-flex flex-wrap align-items-center justify-content-between gap-3 py-3">
               <h2 class="card-title fw-semibold mb-0">Товары в заказе</h2>
-              <div class="d-flex gap-2">
-                <select id="order-form-product" class="form-select" aria-label="Добавить товар"></select>
-                <button id="order-form-reload" class="btn btn-outline-secondary text-nowrap" type="button">Обновить</button>
+              <button id="order-form-reload" class="btn btn-outline-secondary text-nowrap" type="button">Обновить</button>
+            </div>
+            <div class="card-body">
+              <label class="form-label" for="order-form-product">Добавить товар</label>
+              <div id="order-form-product-picker" class="dropdown">
+                <div class="input-group"><input id="order-form-product" class="form-control" type="text" autocomplete="off" placeholder="Название, артикул или SKU" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="order-form-product-options" aria-haspopup="listbox"><button id="order-form-product-search-btn" class="btn btn-outline-primary" type="button">Найти</button></div>
+                <div id="order-form-search-results" class="dropdown-menu top-100 start-0 mt-1 w-100 p-0 shadow">
+                  <div id="order-form-product-options" class="overflow-auto" style="max-height: min(16rem, 35vh);" role="listbox" aria-label="Товары из базы"></div>
+                  <div id="order-form-search-status" class="small text-body-secondary px-3 py-2" role="status" aria-live="polite"></div>
+                  <button id="order-form-search-more" class="dropdown-item text-primary py-2" type="button" hidden>Ещё</button>
+                </div>
               </div>
             </div>
             <div class="table-responsive">
@@ -53,7 +61,7 @@
                 <tbody id="order-form-items"></tbody>
               </table>
             </div>
-            <p id="order-form-items-empty" class="text-center text-body-secondary py-4 mb-0">Выберите товар в списке выше.</p>
+            <p id="order-form-items-empty" class="text-center text-body-secondary py-4 mb-0">Добавьте товары через поиск.</p>
           </section>
         </div>
 
