@@ -13,6 +13,7 @@ import { initUsers } from './pages/users/users.js';
 import { initInventory } from './pages/inventory/inventory.js';
 import { initOrders } from './pages/orders/orders.js';
 import { initOrderForm } from './pages/order-form/order-form.js';
+import { initWarehouse } from './pages/warehouse/warehouse.js';
 
 mountLayout();
 initHome();
@@ -23,4 +24,5 @@ initUsers();
 initInventory();
 initOrders();
 initOrderForm();
+initWarehouse();
 initRouter();

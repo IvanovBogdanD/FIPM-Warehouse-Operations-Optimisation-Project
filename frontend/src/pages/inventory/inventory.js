@@ -1,6 +1,8 @@
 import { byId, showError, showStatus } from '../../shared/dom.js';
 import { showModal, hideModal } from '../../shared/modal.js';
-import { initInventoryProductSearch, closeInventorySearch } from './product-search.js';
+import { initInventoryProductSearch, closeInventorySearch, setInventorySearchMode } from './product-search.js';
+import { callBackend } from '../../shared/api.js';
+import { createWarehouseGrid } from '../../shared/warehouse-grid.js';
 import { inventoryNumber, inventoryDate, inventoryTotals } from './inventory-data.js';
 import { renderInventoryReport, exportInventoryReport } from './inventory-report.js';
 
@@ -8,8 +10,32 @@ let inventoryDetails = null;
 let inventoryBusy = false;
 let inventoryChoices = [];
 const inventorySelected = new Set();
+let inventoryGrid;
+let inventoryStocks = [];
+let inventoryCellChoice = null;
+let inventoryUsesCells = true;
+
+function choiceFromInventoryItem(item) {
+    return { id: inventoryUsesCells ? item.stockId : item.productId, name: item.productName, count: item.systemCount,
+        article: item.article, storageLocation: item.storageLocation };
+}
+
+async function loadInventoryGrid() {
+    byId('inventory-grid-panel').hidden = !inventoryUsesCells;
+    if (!inventoryUsesCells) return;
+    inventoryStocks = await callBackend('GetWarehouseStocks');
+    inventoryGrid.render(inventoryStocks, inventoryCellChoice);
+}
 
 export function initInventory() {
+    inventoryGrid = createWarehouseGrid(byId('inventory-grid'), (cell) => {
+        inventoryCellChoice = cell;
+        for (const stock of cell.items) {
+            if (!inventoryChoices.some((item) => item.id === stock.id)) inventoryChoices.push(stock);
+            inventorySelected.add(stock.id);
+        }
+        renderInventorySelection();
+    });
     initInventoryProductSearch((product) => {
         if (!inventoryChoices.find(p => p.id === product.id)) {
             inventoryChoices.push(product);
@@ -48,7 +74,9 @@ export function initInventory() {
             if (!confirm('Удалить этот товар из инвентаризации?')) return;
             const id = Number(btn.dataset.removeId);
             try {
-                inventoryDetails = await window.go.main.InventoryService.DeleteInventoryItem(inventoryDetails.id, id);
+                await saveInventoryCounts(false);
+                const method = inventoryDetails.byCells ? 'DeleteInventoryCell' : 'DeleteInventoryItem';
+                inventoryDetails = await window.go.main.InventoryService[method](inventoryDetails.id, id);
                 renderInventoryCounts();
             } catch (error) {
                 showError(byId('inventory-status'), error);
@@ -56,26 +84,21 @@ export function initInventory() {
         }
     });
 
-    // Возврат к выбору: перезагружаем данные и список комиссии
-    byId('inventory-back-to-creation').addEventListener('click', async () => {
+    byId('inventory-back-to-creation').addEventListener('click', () => runInventoryAction('inventory-back-to-creation', async () => {
+        await saveInventoryCounts(false);
         inventoryDetails = await window.go.main.InventoryService.GetInventory(inventoryDetails.id);
         inventorySelected.clear();
-        inventoryChoices = inventoryDetails.items.map((item) => ({ 
-            id: item.productId, 
-            name: item.productName, 
-            count: item.systemCount, 
-            article: item.article, 
-            storageLocation: item.storageLocation 
-        }));
+        inventoryChoices = inventoryDetails.items.map(choiceFromInventoryItem);
         inventoryChoices.forEach((product) => inventorySelected.add(product.id));
         
         // Обновляем параметры (дату и комиссию)
         byId('inventory-date').value = inventoryDetails.date || byId('inventory-date').value;
         await renderCommissionList(inventoryDetails.commission);
+        await loadInventoryGrid();
         
         renderInventorySelection();
         showInventoryStage('create');
-    });
+    }));
 
     byId('inventory-back-to-compare').addEventListener('click', () => {
         showInventoryStage('compare');
@@ -199,12 +222,16 @@ async function showInventoryHistory() {
 
 async function openInventory(details) {
     inventoryDetails = details;
+    inventoryUsesCells = details.byCells || details.items.length === 0;
+    inventoryCellChoice = null;
+    setInventorySearchMode(inventoryUsesCells);
     inventorySelected.clear();
-    inventoryChoices = details.items.map((item) => ({ id: item.productId, name: item.productName, count: item.systemCount, article: item.article, storageLocation: item.storageLocation }));
+    inventoryChoices = details.items.map(choiceFromInventoryItem);
     inventoryChoices.forEach((product) => inventorySelected.add(product.id));
     byId('inventory-product-search').value = '';
     
     if (details.status === 'completed') { showInventoryReport(); return; }
+    await loadInventoryGrid();
     
     if (details.items.length > 0) {
         if (details.items.every((item) => item.actualCount !== null)) { renderInventoryComparison(); showInventoryStage('compare'); }
@@ -289,7 +316,7 @@ function renderInventorySelection() {
         if (!full) {
             const removeBtn = document.createElement('button');
             removeBtn.className = 'btn btn-sm btn-link text-danger p-0';
-            removeBtn.innerHTML = '✕';
+            removeBtn.textContent = '✕';
             removeBtn.title = 'Удалить из списка';
             removeBtn.dataset.removeId = product.id;
             removeCell.append(removeBtn);
@@ -302,8 +329,9 @@ function renderInventorySelection() {
     const selected = inventoryChoices.filter((product) => inventorySelected.has(product.id)).length;
     byId('inventory-select-all').checked = full || (inventoryChoices.length > 0 && selected === inventoryChoices.length);
     byId('inventory-select-all').indeterminate = !full && selected > 0 && selected < inventoryChoices.length;
-    byId('inventory-selected-count').textContent = full ? 'Будут проверены все товары из базы' : `Выбрано позиций: ${inventorySelected.size}`;
+    byId('inventory-selected-count').textContent = full ? inventoryUsesCells ? 'Будут проверены все занятые ячейки' : 'Будут проверены все товары из базы' : `Выбрано позиций: ${inventorySelected.size}`;
     for (const id of ['inventory-select-all', 'inventory-select-shown', 'inventory-clear-selection']) byId(id).disabled = full;
+    if (inventoryUsesCells) inventoryGrid.render(inventoryStocks, inventoryCellChoice, full);
 }
 
 function selectedInventoryCommission() {
@@ -324,11 +352,11 @@ async function startInventoryCount() {
         responsible: userName,
         commission: selectedInventoryCommission().join(', '),
         kind: byId('inventory-kind-full').checked ? 'full' : 'partial', 
-        productIds: Array.from(inventorySelected),
+        ...(inventoryUsesCells ? { byCells: true, stockIds: Array.from(inventorySelected) } : { productIds: Array.from(inventorySelected) }),
     };
     
     if (!request.date) throw new Error('Укажите дату проведения.');
-    if (request.kind === 'partial' && !request.productIds.length) throw new Error('Выберите товары для проверки.');
+    if (request.kind === 'partial' && inventorySelected.size === 0) throw new Error('Выберите товары для проверки.');
     
     inventoryDetails = await window.go.main.InventoryService.PrepareInventory(inventoryDetails.id, request);
     renderInventoryCounts(); showInventoryStage('count');
@@ -341,7 +369,7 @@ function inventoryInputCell(item, field) {
     input.className = 'form-control form-control-sm';
     input.value = item[field] === null ? '' : item[field];
     if (actual) { input.min = '0'; input.step = '1'; }
-    input.setAttribute('aria-label', `${actual ? 'Фактическое количество' : 'Комментарий'}: ${item.productName}`);
+    input.setAttribute('aria-label', `${actual ? 'Фактическое количество' : 'Комментарий'}: ${item.productName}, ${item.storageLocation || 'общий остаток'}`);
     const cell = document.createElement('td'); cell.append(input);
     return cell;
 }
@@ -350,13 +378,14 @@ function renderInventoryCounts() {
     const body = byId('inventory-items-body'); body.replaceChildren();
     for (const item of inventoryDetails.items) {
         const row = document.createElement('tr'); row.dataset.productId = item.productId;
+        row.dataset.stockId = item.stockId || 0;
         
         const removeCell = document.createElement('td');
         const removeBtn = document.createElement('button');
         removeBtn.className = 'btn btn-sm btn-link text-danger p-0';
-        removeBtn.innerHTML = '✕';
+        removeBtn.textContent = '✕';
         removeBtn.title = 'Удалить из инвентаризации';
-        removeBtn.dataset.removeId = item.productId;
+        removeBtn.dataset.removeId = inventoryDetails.byCells ? item.stockId : item.productId;
         removeCell.append(removeBtn);
 
         row.append(
@@ -384,7 +413,8 @@ function readInventoryCounts(requireAll) {
         const actualCount = value === '' ? null : Number(value);
         if (requireAll && actualCount === null) throw new Error('Укажите фактическое количество для каждого товара.');
         if (actualCount !== null && (!Number.isSafeInteger(actualCount) || actualCount < 0)) throw new Error('Фактическое количество должно быть целым неотрицательным числом.');
-        return { productId: Number(row.dataset.productId), actualCount, comment: row.children[comparing ? 6 : 4].children[0].value.trim() };
+        return { productId: Number(row.dataset.productId), ...(Number(row.dataset.stockId) > 0 ? { stockId: Number(row.dataset.stockId) } : {}),
+            actualCount, comment: row.children[comparing ? 6 : 4].children[0].value.trim() };
     });
 }
 
@@ -393,6 +423,7 @@ function renderInventoryComparison() {
     for (const item of inventoryDetails.items) {
         const row = document.createElement('tr');
         row.dataset.productId = item.productId;
+        row.dataset.stockId = item.stockId || 0;
         const badge = document.createElement('span');
         const cell = document.createElement('td'); cell.append(badge);
         row.append(inventoryCell(item.productName, 'fw-semibold'), inventoryCell(item.storageLocation || '-'), inventoryCell(item.systemCount, 'text-end'), inventoryInputCell(item, 'actualCount'), inventoryCell(''), cell, inventoryInputCell(item, 'comment'));
@@ -436,7 +467,7 @@ function showInventoryCorrection() {
     const body = byId('inventory-correction-body'); body.replaceChildren();
     for (const item of changed) {
         const row = document.createElement('tr'); const difference = item.actualCount - item.systemCount;
-        row.append(inventoryCell(item.productName), inventoryCell(item.systemCount, 'text-end'), inventoryCell(item.actualCount, 'text-end fw-semibold'), inventoryCell(difference > 0 ? `+${difference}` : difference, `text-end fw-semibold text-${difference < 0 ? 'danger' : 'success'}`)); body.append(row);
+        row.append(inventoryCell(`${item.productName} · ${item.storageLocation || 'общий остаток'}`), inventoryCell(item.systemCount, 'text-end'), inventoryCell(item.actualCount, 'text-end fw-semibold'), inventoryCell(difference > 0 ? `+${difference}` : difference, `text-end fw-semibold text-${difference < 0 ? 'danger' : 'success'}`)); body.append(row);
     }
     showStatus(byId('inventory-correction-status'), ''); showModal('inventory-correction-modal');
 }

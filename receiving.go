@@ -20,6 +20,9 @@ type ReceivingItemRequest struct {
 }
 
 type ReceivingRequest struct {
+	Placement     string                 `json:"placement"`
+	X             int                    `json:"x"`
+	Y             int                    `json:"y"`
 	ProductID     int                    `json:"productId"`
 	Quantity      string                 `json:"quantity"`
 	Responsible   string                 `json:"responsible"`
@@ -35,6 +38,9 @@ type ReceivingItem struct {
 }
 
 type ReceivingOrder struct {
+	Placement     string          `json:"placement"`
+	X             int             `json:"x"`
+	Y             int             `json:"y"`
 	ID            string          `json:"id"`
 	Number        string          `json:"number"`
 	Product       Product         `json:"product"`
@@ -54,6 +60,18 @@ func (s *DBService) CreateReceiving(request ReceivingRequest) (ReceivingOrder, e
 	if err != nil {
 		return ReceivingOrder{}, err
 	}
+	placement := request.Placement
+	if placement == "" {
+		placement = "auto"
+	}
+	if placement != "auto" && placement != "manual" {
+		return ReceivingOrder{}, errors.New("выберите автоматическое или ручное размещение")
+	}
+	if placement == "manual" {
+		if err := validateWarehouseCell(request.X, request.Y); err != nil {
+			return ReceivingOrder{}, err
+		}
+	}
 	requests := request.Items
 	if len(requests) == 0 && request.ProductID > 0 {
 		requests = []ReceivingItemRequest{{ProductID: request.ProductID, Quantity: request.Quantity, Location: request.Location}}
@@ -70,8 +88,14 @@ func (s *DBService) CreateReceiving(request ReceivingRequest) (ReceivingOrder, e
 		}
 		selected[item.ProductID] = true
 		location := strings.TrimSpace(item.Location)
-		if location == "" {
+		if request.Placement == "" && location == "" {
 			return ReceivingOrder{}, errors.New("укажите место хранения для каждого товара")
+		}
+		if request.Placement != "" {
+			location = "Автоматически при подтверждении"
+			if placement == "manual" {
+				location = warehouseLocation(request.X, request.Y)
+			}
 		}
 		quantity, err := strconv.ParseUint(item.Quantity, 10, 53)
 		if err != nil || quantity == 0 {
@@ -97,6 +121,7 @@ func (s *DBService) CreateReceiving(request ReceivingRequest) (ReceivingOrder, e
 	id := hex.EncodeToString(token[:])
 	first := items[0]
 	order := ReceivingOrder{
+		Placement: placement, X: request.X, Y: request.Y,
 		ID: id, Number: "П-" + strings.ToUpper(id[:8]), Product: first.Product, Quantity: first.Quantity,
 		Responsible: manager.Name, ResponsibleID: manager.ID, Location: first.Location,
 		Status: "pending", CreatedAt: time.Now(), Items: items,
@@ -136,6 +161,16 @@ func (s *DBService) CompleteReceiving(id string) (ReceivingOrder, error) {
 		return ReceivingOrder{}, fmt.Errorf("начало приёмки: %w", err)
 	}
 	defer tx.Rollback()
+	x, y := order.X, order.Y
+	if order.Placement == "manual" {
+		err = requireEmptyWarehouseCell(tx, x, y)
+	} else {
+		x, y, err = freeWarehouseCell(tx)
+	}
+	if err != nil {
+		return ReceivingOrder{}, err
+	}
+	receivedAt := time.Now().UTC().Format(warehouseTimeLayout)
 	items := append([]ReceivingItem(nil), order.Items...)
 	for index, item := range items {
 		product, err := scanProduct(tx.QueryRow(`UPDATE products SET count = count + ?
@@ -148,12 +183,19 @@ func (s *DBService) CompleteReceiving(id string) (ReceivingOrder, error) {
 			return ReceivingOrder{}, fmt.Errorf("сохранение остатка: %w", err)
 		}
 		items[index].Product = product
+		items[index].Location = warehouseLocation(x, y)
+		if _, err := tx.Exec("INSERT INTO warehouse_stock(product_id,x,y,quantity,received_at) VALUES(?,?,?,?,?)",
+			item.Product.ID, x, y, item.Quantity, receivedAt); err != nil {
+			return ReceivingOrder{}, fmt.Errorf("сохранение ячейки: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return ReceivingOrder{}, fmt.Errorf("завершение приёмки: %w", err)
 	}
 	order.Items = items
 	order.Product = items[0].Product
+	order.X, order.Y = x, y
+	order.Location = warehouseLocation(x, y)
 	order.Status = "completed"
 	s.receiving[id] = order
 	return order, nil

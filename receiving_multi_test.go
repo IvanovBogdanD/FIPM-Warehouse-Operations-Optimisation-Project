@@ -63,7 +63,7 @@ func TestBatchReceivingAtomicCompletion(t *testing.T) {
 			found = item
 		}
 	}
-	if len(found.Items) != 2 || found.Items[1].ProductID != 2 || found.Items[1].Quantity != 4 || found.Items[1].Location != "B-02" {
+	if len(found.Items) != 2 || found.Items[1].ProductID != 2 || found.Items[1].Quantity != 4 || found.Items[1].Location != completed.Location || found.Items[0].Location != completed.Location {
 		t.Fatalf("composition=%+v", found)
 	}
 }

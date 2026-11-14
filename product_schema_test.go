@@ -38,7 +38,7 @@ func TestProductUpgradePreservesCatalog(t *testing.T) {
 		}
 	}
 	var tables int
-	if err := s.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").Scan(&tables); err != nil || tables != 1 {
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").Scan(&tables); err != nil || tables != 2 {
 		t.Fatalf("extra tables: %d, error=%v", tables, err)
 	}
 	if _, err := s.db.Exec("UPDATE products SET manufacturer='Наш производитель', count=7 WHERE id=1"); err != nil {

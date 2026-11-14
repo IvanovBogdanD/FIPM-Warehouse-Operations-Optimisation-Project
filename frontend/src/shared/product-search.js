@@ -1,7 +1,9 @@
 import { byId, showError, showStatus } from './dom.js';
 import { callBackend } from './api.js';
 
-export function createProductSearch({ prefix, inputId = `${prefix}-product-search`, onChoose, onResults = () => {}, onError = () => {}, keepOpenOnSelect = false }) {
+export function createProductSearch({ prefix, inputId = `${prefix}-product-search`, onChoose, onResults = () => {}, onError = () => {}, keepOpenOnSelect = false,
+    searchPage = (query, cursor) => callBackend('SearchProductsPage', query, cursor),
+    productLabel = (product) => product.article ? `${product.name} · ${product.article}` : product.name }) {
     const input = byId(inputId);
     const picker = byId(`${prefix}-product-picker`);
     const results = byId(`${prefix}-search-results`);
@@ -34,7 +36,7 @@ export function createProductSearch({ prefix, inputId = `${prefix}-product-searc
         showStatus(status, 'Загрузка товаров...');
         more.disabled = true;
         try {
-            const page = await callBackend('SearchProductsPage', input.value.trim(), cursor);
+            const page = await searchPage(input.value.trim(), cursor);
             if (request !== version) return;
             for (const product of page.products) {
                 const button = document.createElement('button');
@@ -48,7 +50,7 @@ export function createProductSearch({ prefix, inputId = `${prefix}-product-searc
                 leftPart.className = 'd-flex align-items-center flex-grow-1';
                 
                 const name = document.createElement('span');
-                name.textContent = product.article ? `${product.name} · ${product.article}` : product.name;
+                name.textContent = productLabel(product);
                 
                 leftPart.append(name);
                 
@@ -93,7 +95,7 @@ export function createProductSearch({ prefix, inputId = `${prefix}-product-searc
             if (!button.classList.contains('selected-product')) {
                 button.classList.add('selected-product', 'bg-primary-subtle');
                 const check = document.createElement('span');
-                check.innerHTML = '✓';
+                check.textContent = '✓';
                 check.className = 'text-primary fw-bold me-2';
                 button.prepend(check);
             }

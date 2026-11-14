@@ -1,6 +1,7 @@
 import { callBackend } from '../../shared/api.js';
 import { byId, showError, showStatus } from '../../shared/dom.js';
 import { createProductSearch } from '../../shared/product-search.js';
+import { cellName, createWarehouseGrid } from '../../shared/warehouse-grid.js';
 
 let receivingItems = [];
 let receivingManagers = [];
@@ -8,6 +9,15 @@ let receivingOrder = null;
 let receivingBusy = false;
 let receivingLoaded = false;
 let receivingSearch;
+let receivingGrid;
+let receivingStocks = [];
+let receivingCellChoice = null;
+
+function renderPlacement() {
+    byId('receiving-cell-picker').hidden = byId('receiving-placement').value !== 'manual';
+    byId('receiving-cell-label').textContent = receivingCellChoice ? `Выбрана ячейка ${cellName(receivingCellChoice.x, receivingCellChoice.y)}` : 'Выберите свободную ячейку.';
+    receivingGrid.render(receivingStocks, receivingCellChoice);
+}
 
 export function validateReceiving(productId, quantity, location) {
     if (!Number.isSafeInteger(productId) || productId <= 0) throw new Error('Выберите товар.');
@@ -42,17 +52,12 @@ function renderReceivingItems() {
         quantity.setAttribute('aria-label', `Принимаемое количество: ${item.product.name}`);
         quantity.addEventListener('input', () => { item.quantity = quantity.value; });
         const amount = document.createElement('td'); amount.append(quantity);
-        const location = document.createElement('input');
-        location.type = 'text'; location.required = true; location.className = 'form-control'; location.value = item.location;
-        location.setAttribute('aria-label', `Место хранения: ${item.product.name}`);
-        location.addEventListener('input', () => { item.location = location.value; });
-        const place = document.createElement('td'); place.append(location);
         const remove = document.createElement('button');
         remove.type = 'button'; remove.className = 'btn btn-outline-danger btn-sm'; remove.textContent = 'Убрать';
         remove.setAttribute('aria-label', `Убрать: ${item.product.name}`);
         remove.addEventListener('click', () => { receivingItems.splice(index, 1); renderReceivingItems(); });
         const actions = document.createElement('td'); actions.append(remove);
-        row.append(receivingCell(item.product.name, 'text-break'), receivingCell(item.product.count, 'text-end'), amount, place, actions);
+        row.append(receivingCell(item.product.name, 'text-break'), receivingCell(item.product.count, 'text-end'), amount, actions);
         return row;
     });
     byId('receiving-items').replaceChildren(...rows);
@@ -69,7 +74,7 @@ function renderReceivingOrder() {
     byId('receiving-order-status').className = completed ? 'badge text-bg-success mb-3' : 'badge text-bg-primary mb-3';
     byId('receiving-order-status').textContent = completed ? 'Завершён' : 'Черновик';
     byId('receiving-order-id').textContent = `Номер: ${receivingOrder.number}`;
-    for (const [label, value] of [['Ответственный', receivingOrder.responsible], ['Позиций', receivingOrder.items.length]]) {
+    for (const [label, value] of [['Ответственный', receivingOrder.responsible], ['Позиций', receivingOrder.items.length], ['Ячейка', receivingOrder.location]]) {
         const term = document.createElement('dt'); term.textContent = label;
         const definition = document.createElement('dd'); definition.textContent = value;
         byId('receiving-summary').append(term, definition);
@@ -104,7 +109,8 @@ export async function loadReceiving() {
     updateReceivingControls();
     showStatus(byId('receiving-status'), 'Загрузка менеджеров...');
     try {
-        const managers = await callBackend('GetManagers');
+        const [managers, stocks] = await Promise.all([callBackend('GetManagers'), callBackend('GetWarehouseStocks')]);
+        receivingStocks = stocks;
         if (receivingOrder) receivingOrder = await callBackend('GetReceiving', receivingOrder.id);
         const selected = byId('receiving-responsible').value;
         const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Выберите менеджера';
@@ -116,7 +122,7 @@ export async function loadReceiving() {
         byId('receiving-responsible').value = selected;
         receivingManagers = managers;
         receivingLoaded = managers.length > 0;
-        renderReceivingItems(); renderReceivingOrder();
+        renderReceivingItems(); renderReceivingOrder(); renderPlacement();
         showStatus(byId('receiving-status'), receivingOrder
             ? receivingOrder.status === 'completed' ? 'Приёмка завершена. Остатки сохранены.' : 'Проверьте состав заказа. Остатки ещё не изменены.'
             : managers.length ? 'Выберите менеджера и добавьте товары через поиск.' : 'Нет одобренных менеджеров. Создание приёмки недоступно.');
@@ -127,7 +133,9 @@ export async function loadReceiving() {
 function resetReceiving() {
     receivingOrder = null;
     receivingItems = [];
+    receivingCellChoice = null;
     byId('receiving-form').reset();
+    renderPlacement();
     renderReceivingItems(); renderReceivingOrder(); updateReceivingControls();
 }
 
@@ -144,11 +152,18 @@ async function createReceiving(event) {
         const manager = receivingManagers.find((item) => item.id === Number(byId('receiving-responsible').value));
         if (!manager) throw new Error('Выберите ответственного менеджера.');
         if (!receivingItems.length) throw new Error('Добавьте хотя бы один товар.');
-        const items = receivingItems.map((item) => validateReceiving(item.product.id, item.quantity, item.location));
+        const placement = byId('receiving-placement').value;
+        if (placement === 'manual' && !receivingCellChoice) throw new Error('Выберите свободную ячейку на карте.');
+        const location = placement === 'manual' ? cellName(receivingCellChoice.x, receivingCellChoice.y) : 'Автоматически при подтверждении';
+        const items = receivingItems.map((item) => validateReceiving(item.product.id, item.quantity, location));
         if (!Number.isSafeInteger(items.reduce((total, item) => total + Number(item.quantity), 0))) throw new Error('Общее количество в заказе превышает допустимый предел.');
         receivingBusy = true; receivingSearch.close(); updateReceivingControls();
         showStatus(byId('receiving-status'), 'Создание черновика...');
-        applyReceivingOrder(await callBackend('CreateReceiving', { responsibleId: manager.id, items }));
+        applyReceivingOrder(await callBackend('CreateReceiving', {
+            responsibleId: manager.id, items, placement,
+            x: placement === 'manual' ? receivingCellChoice.x : 0,
+            y: placement === 'manual' ? receivingCellChoice.y : 0,
+        }));
         showStatus(byId('receiving-status'), 'Черновик создан. Проверьте товары и подтвердите приёмку. Остатки ещё не изменены.');
     } catch (error) { showError(byId('receiving-status'), error); }
     finally { receivingBusy = false; updateReceivingControls(); }
@@ -178,12 +193,14 @@ async function cancelReceiving() {
 }
 
 export function initReceiving() {
+    receivingGrid = createWarehouseGrid(byId('receiving-grid'), (cell) => { receivingCellChoice = cell; renderPlacement(); }, true);
+    byId('receiving-placement').addEventListener('change', renderPlacement);
     receivingSearch = createProductSearch({ prefix: 'receiving', onChoose(product) {
         if (receivingItems.some((item) => item.product.id === product.id)) {
             showStatus(byId('receiving-status'), 'Товар уже добавлен. Измените количество в его строке.');
             return;
         }
-        receivingItems.push({ product, quantity: '1', location: product.storageLocation || '' });
+        receivingItems.push({ product, quantity: '1' });
         byId('receiving-product-search').value = '';
         renderReceivingItems();
     } });

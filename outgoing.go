@@ -180,6 +180,9 @@ func (s *DBService) CompleteOutgoing(id string, request CompleteOutgoingRequest)
 	defer tx.Rollback()
 	products := make([]Product, 0, len(order.Items))
 	for _, item := range order.Items {
+		if err := consumeWarehouseStock(tx, item.ProductID, item.Quantity); err != nil {
+			return OutgoingResult{}, fmt.Errorf("списание по ячейкам: %w", err)
+		}
 		product, err := scanProduct(tx.QueryRow(`UPDATE products SET count = count - ?
 			WHERE id = ? AND typeof(count) = 'integer' AND count >= ?
 			RETURNING `+productColumns, item.Quantity, item.ProductID, item.Quantity))

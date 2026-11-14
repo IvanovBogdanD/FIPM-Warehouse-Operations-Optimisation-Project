@@ -1,0 +1,21 @@
+<section id="warehouse-page" aria-label="Карта склада" hidden>
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+    <div><h1 class="h3 fw-bold mb-1">Карта склада</h1><p id="warehouse-summary" class="text-body-secondary mb-0"></p></div>
+    <button id="warehouse-reload" class="btn btn-outline-secondary" type="button">Обновить</button>
+  </div>
+  <p id="warehouse-status" role="status" aria-live="polite"></p>
+  <div class="row g-4 align-items-start">
+    <div class="col-xl-8">
+      <section class="card shadow-none border">
+        <div class="card-header bg-body"><h2 class="card-title fw-semibold">Ячейки склада 8×8</h2></div>
+        <div class="card-body"><p class="small text-body-secondary">Синие ячейки заняты, свободные обозначены контуром. Нажмите ячейку, чтобы посмотреть её содержимое.</p><div id="warehouse-grid" class="table-responsive"></div></div>
+      </section>
+    </div>
+    <div class="col-xl-4">
+      <section class="card shadow-none border">
+        <div class="card-header bg-body"><h2 id="warehouse-cell-title" class="card-title fw-semibold">Содержимое ячейки</h2></div>
+        <div class="card-body"><p id="warehouse-cell-empty" class="text-body-secondary mb-0">Выберите ячейку на карте.</p><div id="warehouse-cell-items" class="list-group list-group-flush"></div></div>
+      </section>
+    </div>
+  </div>
+</section>
