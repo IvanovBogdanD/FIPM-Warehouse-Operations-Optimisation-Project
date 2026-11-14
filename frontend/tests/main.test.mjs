@@ -5,10 +5,10 @@ import vm from 'node:vm';
 
 const templateFiles = ['index.html', 'src/layout/layout.html', 'src/pages/home/home.html',
     'src/pages/catalog/catalog.html', 'src/pages/catalog/product.html', 'src/pages/orders/orders.html', 'src/pages/order-form/order-form.html', 'src/pages/receiving/receiving.html',
-    'src/pages/auth/auth.html', 'src/pages/users/users.html', 'src/pages/inventory/inventory.html'];
+    'src/pages/auth/auth.html', 'src/pages/users/users.html', 'src/pages/inventory/inventory.html', 'src/pages/warehouse/warehouse.html'];
 const html = (await Promise.all(templateFiles.map((file) => readFile(new URL(`../${file}`, import.meta.url), 'utf8')))).join('\n');
-const moduleFiles = ['shared/api.js', 'shared/dom.js', 'shared/product-search.js', 'shared/icons.js', 'shared/modal.js', 'layout/layout.js',
-    'pages/home/home.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'pages/receiving/receiving.js', 'pages/orders/orders.js', 'pages/order-form/order-form.js',
+const moduleFiles = ['shared/warehouse-grid.js', 'shared/api.js', 'shared/dom.js', 'shared/product-search.js', 'shared/icons.js', 'shared/modal.js', 'layout/layout.js',
+    'pages/home/home.js', 'pages/warehouse/warehouse.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'pages/receiving/receiving.js', 'pages/orders/orders.js', 'pages/order-form/order-form.js',
     'pages/auth/auth.js', 'pages/users/users.js', 'pages/inventory/inventory-data.js', 'pages/inventory/product-search.js', 'pages/inventory/inventory-report.js', 'pages/inventory/inventory.js', 'app/router.js', 'main.js'];
 const scripts = [];
 for (const file of moduleFiles) {
@@ -77,11 +77,13 @@ class Element {
             else this.children.push(child);
         }
     }
+    prepend(...children) { this.children.unshift(...children); }
     replaceChildren(...children) { this.children = children; }
     contains(element) { return this === element || this.children.some((child) => child.contains(element)); }
     focus() { this.focused = true; }
     closest(selector) {
         if (selector === 'button[data-product-id]' && this.dataset.productId !== undefined) return this;
+        if (selector === 'button[data-remove-id]' && this.dataset.removeId !== undefined) return this;
         if (selector === 'button[data-inventory-id]' && this.dataset.inventoryId !== undefined) return this;
         return null;
     }
@@ -102,6 +104,9 @@ async function app(service = {}, hash = '#products', role = 'Менеджер', 
     const window = new Element();
     window.go = { main: { DBService: {
         SearchProducts: async () => [product()],
+        SearchWarehouseStocksPage: async () => ({ products: [{ ...product(), productId: 1, x: 1, y: 1, storageLocation: 'X1 Y1' }], hasMore: false }),
+        GetWarehouseStocks: async () => [{ ...product(), productId: 1, x: 1, y: 1, storageLocation: 'X1 Y1' }],
+        GetProductLocations: async () => [{ ...product(), productId: 1, x: 1, y: 1, storageLocation: 'X1 Y1' }],
         SearchProductsPage: async () => ({ products: [product()], hasMore: false }),
         GetManagers: async () => [{ id: 1, name: 'Иванов' }, { id: 2, name: 'Петрова А.С.' }],
         GetAllProducts: async () => [product()],
@@ -131,13 +136,15 @@ async function app(service = {}, hash = '#products', role = 'Менеджер', 
     };
     elements['receiving-form'].reset = () => {
         for (const id of ['receiving-product-search', 'receiving-responsible']) elements[id].value = '';
+        elements['receiving-placement'].value = 'auto';
     };
     elements['order-form'].reset = () => {
         for (const id of ['order-form-date', 'order-form-responsible', 'order-form-address', 'order-form-note']) elements[id].value = '';
     };
-    const navLinks = ['#home', '#products', '#orders'].map((hash) => Object.assign(new Element(), { hash }));
+    elements['receiving-placement'].value = 'auto';
+    const navLinks = ['#home', '#products', '#orders', '#warehouse'].map((hash) => Object.assign(new Element(), { hash }));
     const context = vm.createContext({
-        window, location, Event,
+        window, location, Event, confirm: () => true,
         sessionStorage: { getItem: () => JSON.stringify({ role, firstName: 'Иван', lastName: 'Иванов' }) },
         bootstrap: { Modal: { getOrCreateInstance: (element) => ({
             show() { element.modalOpen = true; }, hide() { element.modalOpen = false; },
@@ -173,7 +180,6 @@ async function app(service = {}, hash = '#products', role = 'Менеджер', 
             await elements['receiving-product-options'].fire('click', { target: button });
             const row = elements['receiving-items'].children.at(-1);
             const amount = row.children[2].children[0]; amount.value = quantity; await amount.fire('input');
-            const location = row.children[3].children[0]; location.value = place; await location.fire('input');
         },
         async draft() {
             await this.navigate('#orders/receiving');
@@ -205,7 +211,7 @@ test('Кладовщик остаётся в инвентаризации и в�
 test('Инвентаризация загружает по 10 товаров при открытии списка и нажатии Ещё', async () => {
     const requests = [];
     const products = Array.from({ length: 25 }, (_, index) => ({ id: index + 1, name: `Гвозди ${index + 1}`, count: 20 }));
-    const ui = await app({ SearchProductsPage: async (query, afterID) => {
+    const ui = await app({ SearchWarehouseStocksPage: async (query, afterID) => {
         requests.push([query, afterID]);
         return { products: products.slice(afterID, afterID + 10), hasMore: afterID + 10 < products.length };
     } }, '#inventory', 'Кладовщик', { GetDraftInventory: async () => inventoryDraft() });
@@ -226,7 +232,7 @@ test('Инвентаризация загружает по 10 товаров п�
 
 test('Поиск инвентаризации фильтрует при вводе и сбрасывает страницу, пустой результат отличается от ошибки', async () => {
     const requests = [];
-    const ui = await app({ SearchProductsPage: async (query, afterID) => {
+    const ui = await app({ SearchWarehouseStocksPage: async (query, afterID) => {
         requests.push([query, afterID]);
         if (query === 'ошибка') throw new Error('SQLite read');
         return { products: query === 'нет' ? [] : [product()], hasMore: false };
@@ -250,7 +256,7 @@ test('Поиск инвентаризации фильтрует при ввод
 
 test('Запоздалый поиск не подменяет новый запрос и не открывает закрытый список', async () => {
     const slow = deferred();
-    const ui = await app({ SearchProductsPage: (query) => query === 'старый' ? slow.promise : Promise.resolve({ products: [product()], hasMore: false }) },
+    const ui = await app({ SearchWarehouseStocksPage: (query) => query === 'старый' ? slow.promise : Promise.resolve({ products: [product()], hasMore: false }) },
         '#inventory', 'Кладовщик', { GetDraftInventory: async () => inventoryDraft() });
     const input = ui.elements['inventory-product-search'];
     input.value = 'старый';
@@ -260,7 +266,7 @@ test('Запоздалый поиск не подменяет новый зап�
     slow.resolve({ products: [{ id: 2, name: 'Устаревший', count: 5 }], hasMore: false });
     await pending;
     const option = ui.elements['inventory-product-options'].children[0];
-    assert.equal(option.children[0].textContent, 'Молоко');
+    assert.equal(option.children[0].children[0].textContent, 'Молоко');
     await ui.elements['inventory-product-picker'].fire('keydown', { key: 'ArrowDown', target: input });
     assert.equal(option.focused, true);
     await ui.elements['inventory-product-picker'].fire('keydown', { key: 'Escape' });
@@ -270,7 +276,7 @@ test('Запоздалый поиск не подменяет новый зап�
 
 test('Закрытый снаружи список не открывается после запоздавшего ответа базы', async () => {
     const slow = deferred();
-    const ui = await app({ SearchProductsPage: () => slow.promise }, '#inventory', 'Кладовщик',
+    const ui = await app({ SearchWarehouseStocksPage: () => slow.promise }, '#inventory', 'Кладовщик',
         { GetDraftInventory: async () => inventoryDraft() });
     const pending = ui.elements['inventory-product-search'].fire('focus');
     await ui.document.fire('focusin', { target: new Element() });
@@ -283,7 +289,7 @@ test('Закрытый снаружи список не открывается �
 test('Загрузка следующей порции не дублируется, после ошибки можно повторить её с того же товара', async () => {
     const slow = deferred();
     const requests = [];
-    const ui = await app({ SearchProductsPage: (query, afterID) => {
+    const ui = await app({ SearchWarehouseStocksPage: (query, afterID) => {
         requests.push(afterID);
         if (requests.length === 2) return slow.promise;
         return Promise.resolve({ products: [product()], hasMore: requests.length === 1 });
@@ -306,22 +312,23 @@ test('Выбор товара безопасен, подсчёт начинае�
     const unsafe = '<img src=x onerror=alert(1)>';
     let calls = 0;
     let items = [];
-    const ui = await app({ SearchProductsPage: async () => ({ products: [{ id: 1, name: unsafe, count: 10, article: 'ART-1', storageLocation: 'A-01-01-1' }], hasMore: false }) },
+    const ui = await app({ SearchWarehouseStocksPage: async () => ({ products: [{ id: 1, name: unsafe, count: 10, article: 'ART-1', storageLocation: 'A-01-01-1' }], hasMore: false }) },
         '#inventory', 'Кладовщик', {
             GetDraftInventory: async () => inventoryDraft(),
             GetInventory: async () => inventoryDraft(items),
             PrepareInventory: async (id, request) => {
                 calls++;
                 assert.equal(id, 1);
-                assert.deepEqual(Array.from(request.productIds), [1]);
+                assert.deepEqual(Array.from(request.stockIds), [1]);
                 await pending.promise;
                 items = [{ productId: 1, productName: unsafe, systemCount: 10, actualCount: null, difference: null, comment: '' }];
                 return { ...inventoryDraft(items), ...request };
             },
         });
+    await ui.elements['btn-create-inventory'].fire('click');
     await ui.elements['inventory-product-search'].fire('focus');
     const button = ui.elements['inventory-product-options'].children[0];
-    assert.equal(button.children[0].textContent, `${unsafe} · ART-1`);
+    assert.equal(button.children[0].children[0].textContent, `${unsafe} · ART-1 · A-01-01-1`);
     await ui.elements['inventory-product-options'].fire('click', { target: button });
     await ui.elements['inventory-product-options'].fire('click', { target: button });
     assert.equal(ui.elements['inventory-selection-body'].children[0].children[1].textContent, unsafe);
@@ -340,7 +347,8 @@ test('Выбор товара безопасен, подсчёт начинае�
 
 test('Черновик прежней версии с товарами продолжает подсчёт без потери выбранных позиций', async () => {
     const legacy = inventoryDraft([{ productId: 1, productName: 'Гвозди', systemCount: 10, actualCount: null, difference: null, comment: '' }]);
-    const ui = await app({}, '#inventory', 'Кладовщик', { GetDraftInventory: async () => legacy });
+    const ui = await app({}, '#inventory', 'Кладовщик', { GetInventories: async () => [legacy], GetInventory: async () => legacy });
+    await ui.elements['inventory-history-body'].fire('click', { target: ui.elements['inventory-history-body'].children[0].children[4].children[0] });
     assert.equal(ui.elements['inventory-counting'].hidden, false);
     assert.equal(ui.elements['inventory-items-body'].children[0].children[0].textContent, 'Гвозди');
 });
@@ -353,7 +361,7 @@ test('Подсчёт сохраняется без корректировки, �
     let applies = 0, saves = 0;
     const pending = deferred();
     const ui = await app({}, '#inventory', 'Кладовщик', {
-        GetDraftInventory: async () => details,
+        GetInventories: async () => [details],
         GetInventory: async () => details,
         SaveInventoryCounts: async (id, counts) => {
             assert.equal(id, 1); saves++;
@@ -362,6 +370,7 @@ test('Подсчёт сохраняется без корректировки, �
         },
         ApplyInventory: async () => { applies++; await pending.promise; details = { ...details, status: 'completed' }; },
     });
+    await ui.elements['inventory-history-body'].fire('click', { target: ui.elements['inventory-history-body'].children[0].children[4].children[0] });
     assert.equal(ui.elements['inventory-counting'].hidden, false);
     await ui.elements['inventory-to-compare'].fire('click');
     assert.match(ui.elements['inventory-status'].textContent, /каждого товара/);
@@ -694,7 +703,7 @@ test('Карточка отображает характеристики SQLite 
     const ui = await app({ GetProductStock: async () => ({ ...stock(), article: 'ART-1', sku: 'FIPM-1', supplier: '<Поставщик>', manufacturer: 'КрепёжСтрой', warehouse: 'MSK-01', storageLocation: 'A-01-01-1', receivedOn: '2026-10-01', expiresOn: '', rotation: 'LIFO', lengthMm: 140, widthMm: 100, heightMm: 70, weightKg: 1, liquidVolumeL: 0, packageVolumeL: 0.98, unitsPerPackage: 1, demoData: true }) }, '#product/1');
     assert.equal(ui.elements['product-article'].textContent, 'ART-1');
     assert.equal(ui.elements['product-supplier'].textContent, '<Поставщик>');
-    assert.equal(ui.elements['product-location'].textContent, 'A-01-01-1');
+    assert.equal(ui.elements['product-location'].textContent, 'X1 Y1: 10 шт.');
     assert.equal(ui.elements['product-warehouse'].textContent, 'MSK-01');
     assert.equal(ui.elements['product-sku'].textContent, 'FIPM-1 · 1 ед.');
     assert.equal(ui.elements['product-received-on'].textContent, '01.10.2026');
@@ -1355,20 +1364,136 @@ test('Приёмка отправляет несколько товаров, у�
     await ui.addReceiving(2, '4', 'B-02');
     await ui.addReceiving(2, '4', 'B-02');
     assert.equal(ui.elements['receiving-items'].children.length, 2);
-    await ui.elements['receiving-items'].children[1].children[4].children[0].fire('click');
+    await ui.elements['receiving-items'].children[1].children[3].children[0].fire('click');
     assert.equal(ui.elements['receiving-items'].children.length, 1);
     await ui.addReceiving(2, '4', 'B-02');
     await ui.elements['receiving-form'].fire('submit');
     assert.equal(sent.responsibleId, 1);
     assert.equal(sent.items.length, 2);
     assert.equal(sent.items[0].quantity, '3');
-    assert.equal(sent.items[1].location, 'B-02');
+    assert.equal(sent.items[1].location, 'Автоматически при подтверждении');
     assert.equal(ui.elements['receiving-summary-items'].children.length, 2);
-    assert.equal(ui.elements['receiving-summary-items'].children[1].children[0].children[1].textContent, 'B-02');
+    assert.equal(ui.elements['receiving-summary-items'].children[1].children[0].children[1].textContent, 'Автоматически при подтверждении');
 });
 
 test('Без одобренных менеджеров приёмка недоступна', async () => {
     const ui = await app({ GetManagers: async () => [] }, '#orders/receiving');
     assert.equal(ui.elements['receiving-fields'].disabled, true);
     assert.match(ui.elements['receiving-status'].textContent, /Нет одобренных менеджеров/);
+});
+
+function gridButton(ui, id, x, y) {
+    return ui.elements[id].children[0].children[2].children[y - 1].children[x].children[0].children[0];
+}
+
+const cellStock = (id, productId, x, y, count, name = 'Гвозди') => ({
+    id, productId, x, y, count, name, article: `ART-${productId}`, storageLocation: `X${x} Y${y}`, receivedAt: '2026-11-14T09:00:00.000000000Z',
+});
+
+test('Карта склада показывает 64 ячейки, состав смешанного поступления и ссылки на товары', async () => {
+    const stocks = [cellStock(10, 1, 1, 1, 10), cellStock(11, 1, 5, 3, 4), cellStock(12, 2, 5, 3, 3, '<img src=x onerror=alert(1)>')];
+    const ui = await app({ GetWarehouseStocks: async () => stocks }, '#warehouse');
+    assert.equal(ui.elements['warehouse-page'].hidden, false);
+    const rows = ui.elements['warehouse-grid'].children[0].children[2].children;
+    assert.equal(rows.length, 8);
+    assert.ok(rows.every((row) => row.children.length === 9));
+    assert.equal(ui.elements['warehouse-summary'].textContent, 'Занято 2 из 64 · свободно 62');
+    await gridButton(ui, 'warehouse-grid', 5, 3).fire('click');
+    assert.equal(ui.elements['warehouse-cell-title'].textContent, 'Ячейка X5 Y3');
+    const links = ui.elements['warehouse-cell-items'].children;
+    assert.equal(links.length, 2);
+    assert.equal(links[0].href, '#product/1');
+    assert.equal(links[1].href, '#product/2');
+    assert.equal(links[1].children[0].textContent, stocks[2].name);
+    assert.equal(links[0].children[1].textContent, '4 шт.');
+    await gridButton(ui, 'warehouse-grid', 8, 8).fire('click');
+    assert.equal(ui.elements['warehouse-cell-empty'].textContent, 'Ячейка свободна.');
+    assert.equal(ui.elements['warehouse-cell-items'].children.length, 0);
+});
+
+test('Ошибка карты не выдаётся за пустой склад, обновление восстанавливает данные', async () => {
+    let failed = true;
+    const ui = await app({ GetWarehouseStocks: async () => { if (failed) throw new Error('SQLite cells'); return [cellStock(1, 1, 1, 1, 10)]; } }, '#warehouse');
+    assert.match(ui.elements['warehouse-status'].textContent, /SQLite cells/);
+    assert.equal(ui.elements['warehouse-summary'].textContent, 'Ячейки недоступны');
+    assert.equal(gridButton(ui, 'warehouse-grid', 8, 8).disabled, true);
+    failed = false;
+    await ui.elements['warehouse-reload'].fire('click');
+    assert.equal(gridButton(ui, 'warehouse-grid', 8, 8).disabled, false);
+    assert.equal(ui.elements['warehouse-summary'].textContent, 'Занято 1 из 64 · свободно 63');
+});
+
+test('Ручное размещение выбирает одну свободную ячейку для всех товаров приёмки', async () => {
+    let sent;
+    const products = [product(), { id: 2, name: 'Краска', count: 5 }];
+    const ui = await app({
+        GetWarehouseStocks: async () => [cellStock(1, 1, 1, 1, 10)],
+        SearchProductsPage: async () => ({ products, hasMore: false }),
+        CreateReceiving: async (request) => { sent = request; return receipt(); },
+    }, '#orders/receiving');
+    ui.elements['receiving-responsible'].value = '1';
+    ui.elements['receiving-placement'].value = 'manual';
+    await ui.elements['receiving-placement'].fire('change');
+    assert.equal(ui.elements['receiving-cell-picker'].hidden, false);
+    assert.equal(gridButton(ui, 'receiving-grid', 1, 1).disabled, true);
+    await ui.addReceiving(1, '3'); await ui.addReceiving(2, '4');
+    await ui.elements['receiving-form'].fire('submit');
+    assert.equal(sent, undefined);
+    assert.match(ui.elements['receiving-status'].textContent, /Выберите свободную ячейку/);
+    await gridButton(ui, 'receiving-grid', 8, 8).fire('click');
+    await ui.elements['receiving-form'].fire('submit');
+    assert.equal(sent.placement, 'manual'); assert.equal(sent.x, 8); assert.equal(sent.y, 8);
+    assert.equal(sent.items.length, 2);
+    assert.ok(sent.items.every((item) => item.location === 'X8 Y8'));
+});
+
+test('Инвентаризация различает одинаковый товар в двух ячейках и удаляет только выбранную позицию', async () => {
+    const stocks = [cellStock(10, 1, 1, 1, 10), cellStock(11, 1, 5, 3, 4)];
+    let details = inventoryDraft(), saved, deleted;
+    const ui = await app({ GetWarehouseStocks: async () => stocks, SearchWarehouseStocksPage: async () => ({ products: stocks, hasMore: false }) }, '#inventory', 'Кладовщик', {
+        GetInventory: async () => details,
+        PrepareInventory: async (id, request) => {
+            assert.equal(request.byCells, true);
+            assert.deepEqual(Array.from(request.stockIds), [10, 11]);
+            assert.equal(request.productIds, undefined);
+            details = { ...details, ...request, items: stocks.map((stock) => ({ productId: 1, stockId: stock.id, productName: stock.name, storageLocation: stock.storageLocation, systemCount: stock.count, actualCount: null, comment: '' })) };
+            return details;
+        },
+        SaveInventoryCounts: async (id, counts) => { saved = counts; details = { ...details, items: details.items.map((item) => ({ ...item, ...counts.find((count) => count.stockId === item.stockId) })) }; return details; },
+        DeleteInventoryCell: async (id, stockId) => { deleted = stockId; details = { ...details, items: details.items.filter((item) => item.stockId !== stockId) }; return details; },
+    });
+    await ui.elements['btn-create-inventory'].fire('click');
+    await gridButton(ui, 'inventory-grid', 1, 1).fire('click');
+    await gridButton(ui, 'inventory-grid', 5, 3).fire('click');
+    assert.equal(ui.elements['inventory-selected-count'].textContent, 'Выбрано позиций: 2');
+    ui.elements['inventory-date'].value = '2026-11-14';
+    await ui.elements['inventory-start-count'].fire('click');
+    const rows = ui.elements['inventory-items-body'].children;
+    rows[0].children[3].children[0].value = '8';
+    rows[1].children[3].children[0].value = '5';
+    await ui.elements['inventory-save-counts'].fire('click');
+    assert.deepEqual(Array.from(saved, (item) => [item.productId, item.stockId, item.actualCount]), [[1, 10, 8], [1, 11, 5]]);
+    const remove = rows[0].children[5].children[0];
+    await ui.elements['inventory-items-body'].fire('click', { target: remove });
+    assert.equal(deleted, 10);
+    assert.equal(ui.elements['inventory-items-body'].children.length, 1);
+    assert.equal(ui.elements['inventory-items-body'].children[0].children[1].textContent, 'X5 Y3');
+});
+
+test('Карточка товара показывает количество в каждой ячейке', async () => {
+    const ui = await app({ GetProductStock: async () => stock(1, 'Гвозди', 14), GetProductLocations: async () => [cellStock(1, 1, 1, 1, 10), cellStock(2, 1, 5, 3, 4)] }, '#product/1');
+    assert.equal(ui.elements['product-count'].textContent, '14');
+    assert.equal(ui.elements['product-location'].textContent, 'X1 Y1: 10 шт.; X5 Y3: 4 шт.');
+});
+
+test('Карта доступна менеджеру, кладовщик выбирает ячейки внутри инвентаризации', async () => {
+    const manager = await app({}, '#warehouse');
+    assert.equal(manager.elements['nav-warehouse'].classList.contains('d-none'), false);
+    const admin = await app({}, '#warehouse', 'Администратор');
+    await tick();
+    assert.equal(admin.location.hash, '#users');
+    const clerk = await app({}, '#warehouse', 'Кладовщик');
+    await tick();
+    assert.equal(clerk.location.hash, '#inventory');
+    assert.equal(clerk.elements['nav-warehouse'].classList.contains('d-none'), true);
 });

@@ -22,6 +22,9 @@ func main() {
 	if err := dbService.InitProducts(); err != nil {
 		log.Fatal("Ошибка подготовки товаров: ", err)
 	}
+	if err := dbService.InitWarehouse(); err != nil {
+		log.Fatal("Ошибка подготовки ячеек: ", err)
+	}
 
 	authService := NewAuthService(dbService.db)
 	if err := authService.InitSchema(); err != nil {

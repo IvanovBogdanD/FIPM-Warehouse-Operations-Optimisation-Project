@@ -58,6 +58,7 @@ func (i *InventoryService) InitSchema() error {
 		{"inventories", "responsible", "TEXT NOT NULL DEFAULT ''"},
 		{"inventories", "commission", "TEXT NOT NULL DEFAULT ''"},
 		{"inventories", "kind", "TEXT NOT NULL DEFAULT 'partial'"},
+		{"inventories", "by_cells", "INTEGER NOT NULL DEFAULT 0"},
 		{"inventory_items", "comment", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		var count int
@@ -71,10 +72,11 @@ func (i *InventoryService) InitSchema() error {
 		}
 	}
 
-	return nil
+	return i.initInventoryCells()
 }
 
 type Inventory struct {
+	ByCells     bool   `json:"byCells"`
 	ID          int    `json:"id"`
 	Status      string `json:"status"`
 	CreatedAt   string `json:"createdAt"`
@@ -86,6 +88,9 @@ type Inventory struct {
 }
 
 type InventoryItem struct {
+	StockID         int    `json:"stockId,omitempty"`
+	X               int    `json:"x,omitempty"`
+	Y               int    `json:"y,omitempty"`
 	ProductID       int    `json:"productId"`
 	ProductName     string `json:"productName"`
 	Article         string `json:"article"`
@@ -118,10 +123,10 @@ func (i *InventoryService) CreateInventory(responsible string) (Inventory, error
 func (i *InventoryService) getInventory(id int) (Inventory, error) {
 	var inv Inventory
 	err := i.db.QueryRow(`
-		SELECT id, status, created_at, COALESCE(completed_at, ''), inventory_date, responsible, commission, kind
+		SELECT id, status, created_at, COALESCE(completed_at, ''), inventory_date, responsible, commission, kind, by_cells
 		FROM inventories
 		WHERE id = ?
-	`, id).Scan(&inv.ID, &inv.Status, &inv.CreatedAt, &inv.CompletedAt, &inv.Date, &inv.Responsible, &inv.Commission, &inv.Kind)
+	`, id).Scan(&inv.ID, &inv.Status, &inv.CreatedAt, &inv.CompletedAt, &inv.Date, &inv.Responsible, &inv.Commission, &inv.Kind, &inv.ByCells)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return inv, errors.New("inventory not found")
@@ -145,7 +150,8 @@ func (i *InventoryService) AddInventoryItems(inventoryID int, productIDs []int) 
 	defer tx.Rollback()
 
 	var status string
-	err = tx.QueryRow(`SELECT status FROM inventories WHERE id = ?`, inventoryID).Scan(&status)
+	var byCells bool
+	err = tx.QueryRow(`SELECT status,by_cells FROM inventories WHERE id = ?`, inventoryID).Scan(&status, &byCells)
 	if errors.Is(err, sql.ErrNoRows) {
 		return errors.New("inventory not found")
 	}
@@ -154,6 +160,10 @@ func (i *InventoryService) AddInventoryItems(inventoryID int, productIDs []int) 
 	}
 	if status != "draft" {
 		return errors.New("inventory is not draft")
+	}
+
+	if byCells {
+		return errors.New("для этой инвентаризации выберите позиции ячеек через PrepareInventory")
 	}
 
 	for _, productID := range productIDs {
@@ -169,7 +179,7 @@ func (i *InventoryService) AddInventoryItems(inventoryID int, productIDs []int) 
 		_, err = tx.Exec(`
 			INSERT INTO inventory_items (inventory_id, product_id, system_count)
 			VALUES (?, ?, ?)
-			ON CONFLICT(inventory_id, product_id) DO NOTHING
+			ON CONFLICT DO NOTHING
 		`, inventoryID, productID, systemCount)
 		if err != nil {
 			return fmt.Errorf("insert inventory item: %w", err)
@@ -190,11 +200,12 @@ func (i *InventoryService) GetInventory(inventoryID int) (InventoryDetails, erro
 	}
 
 	rows, err := i.db.Query(`
-		SELECT ii.product_id, p.name, ii.system_count, ii.actual_count, ii.comment, p.article, p.storage_location
+		SELECT ii.product_id, p.name, ii.system_count, ii.actual_count, ii.comment, p.article, p.storage_location,
+			COALESCE(ii.stock_id,0),COALESCE(ii.x,0),COALESCE(ii.y,0)
 		FROM inventory_items ii
 		JOIN products p ON p.id = ii.product_id
 		WHERE ii.inventory_id = ?
-		ORDER BY p.name
+		ORDER BY p.name,ii.y,ii.x
 	`, inventoryID)
 	if err != nil {
 		return InventoryDetails{}, fmt.Errorf("get inventory items: %w", err)
@@ -210,7 +221,7 @@ func (i *InventoryService) GetInventory(inventoryID int) (InventoryDetails, erro
 		var item InventoryItem
 		var actual sql.NullInt64
 
-		err := rows.Scan(&item.ProductID, &item.ProductName, &item.SystemCount, &actual, &item.Comment, &item.Article, &item.StorageLocation)
+		err := rows.Scan(&item.ProductID, &item.ProductName, &item.SystemCount, &actual, &item.Comment, &item.Article, &item.StorageLocation, &item.StockID, &item.X, &item.Y)
 		if err != nil {
 			return InventoryDetails{}, fmt.Errorf("scan inventory item: %w", err)
 		}
@@ -220,6 +231,9 @@ func (i *InventoryService) GetInventory(inventoryID int) (InventoryDetails, erro
 			diff := value - item.SystemCount
 			item.ActualCount = &value
 			item.Difference = &diff
+		}
+		if item.StockID != 0 {
+			item.StorageLocation = warehouseLocation(item.X, item.Y)
 		}
 
 		details.Items = append(details.Items, item)
@@ -254,6 +268,13 @@ func (i *InventoryService) SetActualCount(inventoryID int, productID int, actual
 	if actualCount < 0 {
 		return errors.New("actual count must be non-negative")
 	}
+	var count int
+	if err := i.db.QueryRow("SELECT count(*) FROM inventory_items WHERE inventory_id=? AND product_id=?", inventoryID, productID).Scan(&count); err != nil {
+		return err
+	}
+	if count > 1 {
+		return errors.New("товар находится в нескольких ячейках, сохраните количество для каждой позиции отдельно")
+	}
 
 	res, err := i.db.Exec(`
 		UPDATE inventory_items
@@ -281,6 +302,8 @@ func (i *InventoryService) SetActualCount(inventoryID int, productID int, actual
 }
 
 type InventoryParameters struct {
+	ByCells     bool   `json:"byCells"`
+	StockIDs    []int  `json:"stockIds"`
 	Date        string `json:"date"`
 	Responsible string `json:"responsible"`
 	Commission  string `json:"commission"`
@@ -289,6 +312,7 @@ type InventoryParameters struct {
 }
 
 type InventoryCount struct {
+	StockID     int    `json:"stockId,omitempty"`
 	ProductID   int    `json:"productId"`
 	ActualCount *int   `json:"actualCount"`
 	Comment     string `json:"comment"`
@@ -301,11 +325,12 @@ func (i *InventoryService) SaveInventoryCounts(id int, counts []InventoryCount) 
 	}
 	defer tx.Rollback()
 	for _, item := range counts {
-		if item.ActualCount != nil && *item.ActualCount < 0 {
-			return InventoryDetails{}, errors.New("фактическое количество не может быть отрицательным")
+		if item.ActualCount != nil && (*item.ActualCount < 0 || int64(*item.ActualCount) > maxSafeCount) {
+			return InventoryDetails{}, errors.New("фактическое количество должно быть целым числом от 0 до 9007199254740991")
 		}
 		result, err := tx.Exec(`UPDATE inventory_items SET actual_count=?,comment=? WHERE inventory_id=? AND product_id=?
-			AND EXISTS(SELECT 1 FROM inventories WHERE id=? AND status='draft')`, item.ActualCount, strings.TrimSpace(item.Comment), id, item.ProductID, id)
+			AND ((stock_id IS NULL AND ?=0) OR stock_id=?)
+			AND EXISTS(SELECT 1 FROM inventories WHERE id=? AND status='draft')`, item.ActualCount, strings.TrimSpace(item.Comment), id, item.ProductID, item.StockID, item.StockID, id)
 		if err != nil {
 			return InventoryDetails{}, err
 		}
@@ -334,6 +359,10 @@ func (i *InventoryService) PrepareInventory(id int, request InventoryParameters)
 	if request.Kind != "partial" && request.Kind != "full" {
 		return InventoryDetails{}, errors.New("выберите тип инвентаризации")
 	}
+	if request.ByCells {
+		request.Commission = strings.TrimSpace(request.Commission)
+		return i.prepareInventoryCells(id, request)
+	}
 	if request.Kind == "partial" && len(request.ProductIDs) == 0 {
 		return InventoryDetails{}, errors.New("выберите товары для проверки")
 	}
@@ -345,11 +374,16 @@ func (i *InventoryService) PrepareInventory(id int, request InventoryParameters)
 	defer tx.Rollback()
 
 	var status string
-	if err := tx.QueryRow("SELECT status FROM inventories WHERE id=?", id).Scan(&status); err != nil {
+	var byCells bool
+	if err := tx.QueryRow("SELECT status,by_cells FROM inventories WHERE id=?", id).Scan(&status, &byCells); err != nil {
 		return InventoryDetails{}, err
 	}
 	if status != "draft" {
 		return InventoryDetails{}, errors.New("инвентаризация уже завершена")
+	}
+
+	if byCells {
+		return InventoryDetails{}, errors.New("инвентаризация создана по ячейкам, передайте список позиций ячеек")
 	}
 
 	// 1. Сохраняем в память старые данные (факт и комментарий)
@@ -424,7 +458,7 @@ func (i *InventoryService) PrepareInventory(id int, request InventoryParameters)
 		}
 	}
 
-	if _, err := tx.Exec("UPDATE inventories SET inventory_date=?,responsible=?,commission=?,kind=? WHERE id=?", request.Date, request.Responsible, strings.TrimSpace(request.Commission), request.Kind, id); err != nil {
+	if _, err := tx.Exec("UPDATE inventories SET inventory_date=?,responsible=?,commission=?,kind=?,by_cells=0 WHERE id=?", request.Date, request.Responsible, strings.TrimSpace(request.Commission), request.Kind, id); err != nil {
 		return InventoryDetails{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -464,7 +498,8 @@ func (i *InventoryService) ApplyInventory(inventoryID int) error {
 	defer tx.Rollback()
 
 	var status string
-	err = tx.QueryRow(`SELECT status FROM inventories WHERE id = ?`, inventoryID).Scan(&status)
+	var byCells bool
+	err = tx.QueryRow(`SELECT status,by_cells FROM inventories WHERE id = ?`, inventoryID).Scan(&status, &byCells)
 	if errors.Is(err, sql.ErrNoRows) {
 		return errors.New("inventory not found")
 	}
@@ -497,7 +532,15 @@ func (i *InventoryService) ApplyInventory(inventoryID int) error {
 		return errors.New("some inventory items have no actual count")
 	}
 
-	_, err = tx.Exec(`
+	if byCells {
+		if err := applyInventoryCells(tx, inventoryID); err != nil {
+			return err
+		}
+	} else {
+		if err := applyLegacyInventoryStock(tx, inventoryID); err != nil {
+			return err
+		}
+		_, err = tx.Exec(`
 		UPDATE products
 		SET count = (
 			SELECT ii.actual_count
@@ -511,8 +554,10 @@ func (i *InventoryService) ApplyInventory(inventoryID int) error {
 			WHERE inventory_id = ?
 		)
 	`, inventoryID, inventoryID)
-	if err != nil {
-		return fmt.Errorf("update product counts: %w", err)
+		if err != nil {
+			return fmt.Errorf("update product counts: %w", err)
+		}
+
 	}
 
 	_, err = tx.Exec(`
@@ -556,7 +601,7 @@ func (i *InventoryService) GetDraftInventory() (*InventoryDetails, error) {
 }
 
 func (i *InventoryService) GetInventories() ([]Inventory, error) {
-	rows, err := i.db.Query(`SELECT id,status,created_at,COALESCE(completed_at,''),inventory_date,responsible,commission,kind FROM inventories ORDER BY id DESC`)
+	rows, err := i.db.Query(`SELECT id,status,created_at,COALESCE(completed_at,''),inventory_date,responsible,commission,kind,by_cells FROM inventories ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -564,7 +609,7 @@ func (i *InventoryService) GetInventories() ([]Inventory, error) {
 	inventories := []Inventory{}
 	for rows.Next() {
 		var inventory Inventory
-		if err := rows.Scan(&inventory.ID, &inventory.Status, &inventory.CreatedAt, &inventory.CompletedAt, &inventory.Date, &inventory.Responsible, &inventory.Commission, &inventory.Kind); err != nil {
+		if err := rows.Scan(&inventory.ID, &inventory.Status, &inventory.CreatedAt, &inventory.CompletedAt, &inventory.Date, &inventory.Responsible, &inventory.Commission, &inventory.Kind, &inventory.ByCells); err != nil {
 			return nil, err
 		}
 		inventories = append(inventories, inventory)

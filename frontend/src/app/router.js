@@ -7,9 +7,10 @@ import { loadUsers } from '../pages/users/users.js';
 import { loadInventory } from '../pages/inventory/inventory.js';
 import { loadOrders } from '../pages/orders/orders.js';
 import { loadOrderForm } from '../pages/order-form/order-form.js';
+import { loadWarehouse } from '../pages/warehouse/warehouse.js';
 
 function updateMenuVisibility(role) {
-    const menuItems = ['nav-home', 'nav-products', 'nav-orders', 'nav-inventory', 'nav-analytics', 'nav-analytics-header', 'nav-users'];
+    const menuItems = ['nav-home', 'nav-products', 'nav-warehouse', 'nav-orders', 'nav-inventory', 'nav-analytics', 'nav-analytics-header', 'nav-users'];
     menuItems.forEach(id => {
         const el = byId(id);
         if (el) el.classList.add('d-none');
@@ -25,6 +26,7 @@ function updateMenuVisibility(role) {
     else if (role === 'Менеджер') {
         if (byId('nav-home')) byId('nav-home').classList.remove('d-none');
         if (byId('nav-products')) byId('nav-products').classList.remove('d-none');
+        byId('nav-warehouse').classList.remove('d-none');
         if (byId('nav-orders')) byId('nav-orders').classList.remove('d-none');
         if (byId('nav-analytics')) byId('nav-analytics').classList.remove('d-none');
         if (byId('nav-analytics-header')) byId('nav-analytics-header').classList.remove('d-none');
@@ -76,7 +78,7 @@ async function route() {
         }
     } 
     else if (user.role === 'Администратор') {
-        if (['products', 'product', 'orders', 'orders/new', 'orders/new/writeoff', 'receiving', 'inventory'].includes(hash)) {
+        if (['products', 'product', 'warehouse', 'orders', 'orders/new', 'orders/new/writeoff', 'receiving', 'inventory'].includes(hash)) {
             location.hash = '#users';
             return;
         }
@@ -94,6 +96,7 @@ async function route() {
     const orderFormMatch = /^orders\/new(\/writeoff)?$/.exec(hash);
     let page = 'home';
     if (hash === 'products') page = 'catalog';
+    if (hash === 'warehouse') page = 'warehouse';
     if (productMatch) page = 'product';
     if (hash === 'orders') page = 'orders';
     if (orderFormMatch) page = 'order-form';
@@ -103,10 +106,10 @@ async function route() {
 
     const titles = {
         home: 'Главная', catalog: 'Товары', product: 'Товары / Карточка товара',
-        orders: 'Заказы', 'order-form': 'Заказы', receiving: 'Заказы', users: 'Пользователи', inventory: 'Инвентаризация'
+        orders: 'Заказы', 'order-form': 'Заказы', receiving: 'Заказы', users: 'Пользователи', inventory: 'Инвентаризация', warehouse: 'Карта склада'
     };
 
-    for (const name of ['home', 'catalog', 'product', 'orders', 'order-form', 'receiving', 'users', 'inventory']) {
+    for (const name of ['home', 'catalog', 'product', 'orders', 'order-form', 'receiving', 'users', 'inventory', 'warehouse']) {
         const el = byId(`${name}-page`);
         if (el) el.hidden = page !== name;
     }
@@ -117,6 +120,7 @@ async function route() {
     if (page === 'orders' || page === 'order-form' || page === 'receiving') activeHash = '#orders';
     if (page === 'users') activeHash = '#users';
     if (page === 'inventory') activeHash = '#inventory';
+    if (page === 'warehouse') activeHash = '#warehouse';
 
     document.querySelectorAll('.sidebar-menu a.nav-link').forEach((link) => {
         const active = link.hash === activeHash;
@@ -133,6 +137,7 @@ async function route() {
     if (page === 'receiving') await loadReceiving();
     if (page === 'users') await loadUsers();
     if (page === 'inventory') await loadInventory();
+    if (page === 'warehouse') await loadWarehouse();
 }
 
 export function initRouter() {

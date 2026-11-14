@@ -26,6 +26,9 @@ func testStore(t *testing.T) (*DBService, string) {
 	if err := service.InitProducts(); err != nil {
 		t.Fatal(err)
 	}
+	if err := service.InitWarehouse(); err != nil {
+		t.Fatal(err)
+	}
 	return service, path
 }
 

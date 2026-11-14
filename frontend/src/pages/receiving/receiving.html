@@ -13,6 +13,9 @@
           <fieldset id="receiving-fields" class="border-0 p-0 m-0" disabled>
             <div class="card-body">
               <div class="mb-3"><label class="form-label" for="receiving-responsible">Ответственный менеджер</label><select id="receiving-responsible" class="form-select" required><option value="">Выберите менеджера</option></select></div>
+              <div class="mb-3"><label class="form-label" for="receiving-placement">Размещение всей приёмки</label><select id="receiving-placement" class="form-select"><option value="auto">Автоматически в свободную ячейку</option><option value="manual">Выбрать ячейку на карте</option></select></div>
+              <div id="receiving-cell-picker" class="mb-3" hidden><p id="receiving-cell-label" class="mb-2" role="status">Выберите свободную ячейку.</p><div id="receiving-grid" class="table-responsive"></div></div>
+              <p class="small text-body-secondary">Все товары этой приёмки займут одну ячейку после подтверждения. Черновик не занимает место.</p>
               <label class="form-label" for="receiving-product-search">Добавить товар</label>
               <div id="receiving-product-picker" class="dropdown">
                 <div class="input-group"><input id="receiving-product-search" class="form-control" type="text" autocomplete="off" placeholder="Название, артикул или SKU" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="receiving-product-options" aria-haspopup="listbox"><button id="receiving-product-search-btn" class="btn btn-outline-primary" type="button">Найти</button></div>
@@ -23,7 +26,7 @@
                 </div>
               </div>
             </div>
-            <div class="table-responsive"><table class="table align-middle mb-0"><thead class="table-light"><tr><th>Товар</th><th class="text-end">На складе</th><th>Принимаем</th><th>Место хранения</th><th><span class="visually-hidden">Убрать</span></th></tr></thead><tbody id="receiving-items"></tbody></table></div>
+            <div class="table-responsive"><table class="table align-middle mb-0"><thead class="table-light"><tr><th>Товар</th><th class="text-end">На складе</th><th>Принимаем</th><th><span class="visually-hidden">Убрать</span></th></tr></thead><tbody id="receiving-items"></tbody></table></div>
             <p id="receiving-items-empty" class="text-center text-body-secondary py-4 mb-0">Выберите товары через поиск.</p>
             <div class="card-footer bg-body"><button id="create-receiving" class="btn btn-primary" type="submit">Создать черновик</button><p class="text-body-secondary small mt-2 mb-0">При создании черновика остатки не меняются.</p></div>
           </fieldset>

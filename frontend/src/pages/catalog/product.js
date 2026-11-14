@@ -9,7 +9,7 @@ function productAvailability(stock) {
     return { label: 'В наличии', style: 'text-bg-success' };
 }
 
-function renderProduct(stock) {
+function renderProduct(stock, locations) {
     const { label, style } = productAvailability(stock);
     const reservedShare = stock.count > 0 ? Math.min(100, Math.round(stock.reserved / stock.count * 100)) : 0;
     const freeShare = stock.count > 0 ? 100 - reservedShare : 0;
@@ -34,7 +34,7 @@ function renderProduct(stock) {
         article: stock.article || 'Не указан',
         sku: stock.sku ? `${stock.sku} · ${stock.unitsPerPackage} ед.` : 'Не указан',
         warehouse: stock.warehouse || 'Не указан',
-        location: stock.storageLocation || 'Не указана',
+        location: locations.length ? locations.map((item) => `${item.storageLocation}: ${item.count} шт.`).join('; ') : 'Не размещён в ячейках',
         'position-id': stock.id,
         'received-on': date(stock.receivedOn),
         storage: stock.rotation ? `${stock.expiresOn ? `До ${date(stock.expiresOn)}` : 'Без ограничения срока'} · ${stock.rotation}` : 'Не указан',
@@ -56,9 +56,9 @@ export async function loadProduct(id) {
     byId('product-card').hidden = true;
     showStatus(byId('product-status'), 'Загрузка товара…');
     try {
-        const stock = await callBackend('GetProductStock', id);
+        const [stock, locations] = await Promise.all([callBackend('GetProductStock', id), callBackend('GetProductLocations', id)]);
         if (request !== productRequest) return;
-        renderProduct(stock);
+        renderProduct(stock, locations);
         byId('product-summary').hidden = false;
         byId('product-card').hidden = false;
         showStatus(byId('product-status'), '');
