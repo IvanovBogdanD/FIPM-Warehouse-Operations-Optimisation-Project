@@ -59,7 +59,7 @@ type RegisterRequest struct {
 
 // Register — регистрирует пользователя. Пароль хэшируется bcrypt.
 func (a *AuthService) Register(req RegisterRequest) error {
-	if req.Email == "" || req.Password == "" || req.FirstName == "" || req.LastName == "" {
+	if req.Email == "" || req.Password == "" || req.FirstName == "" || req.LastName == "" || req.Role == "" {
 		return errors.New("заполните все обязательные поля")
 	}
 

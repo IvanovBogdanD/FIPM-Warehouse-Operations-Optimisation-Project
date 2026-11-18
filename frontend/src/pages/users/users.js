@@ -20,9 +20,9 @@ export function initUsers() {
             }
         }
 
-        // Обработка кнопки "Отклонить" (Блокировка)
+        // Обработка кнопки "Заблокировать" (Блокировка)
         if (e.target.classList.contains('btn-block')) {
-            if (!confirm('Вы уверены, что хотите отклонить (заблокировать) этого пользователя?')) {
+            if (!confirm('Вы уверены, что хотите заблокировать этого пользователя?')) {
                 return;
             }
 
@@ -36,7 +36,7 @@ export function initUsers() {
             } catch (err) {
                 alert('Ошибка при блокировке: ' + err);
                 e.target.disabled = false;
-                e.target.textContent = 'Отклонить';
+                e.target.textContent = 'Заблокировать';
             }
         }
     });
@@ -72,7 +72,7 @@ export async function loadUsers() {
                 if (currentUser && currentUser.id === u.id) {
                     actionBtn = '<span class="text-muted small">Это вы</span>';
                 } else {
-                    actionBtn = `<button class="btn btn-sm btn-outline-danger btn-block" data-id="${u.id}">Отклонить</button>`;
+                    actionBtn = `<button class="btn btn-sm btn-outline-danger btn-block" data-id="${u.id}">Заблокировать</button>`;
                 }
             } else {
                 actionBtn = `<button class="btn btn-sm btn-primary btn-approve" data-id="${u.id}">Одобрить</button>`;

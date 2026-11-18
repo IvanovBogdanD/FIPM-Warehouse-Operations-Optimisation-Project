@@ -79,6 +79,12 @@ export function initAuth() {
             registerError.style.display = 'block';
             return;
         }
+        const role = byId('reg-role').value;
+        if (!role) {
+            registerError.textContent = 'Выберите роль';
+            registerError.style.display = 'block';
+            return;
+        }
 
         const req = {
             lastName: byId('reg-lastname').value,
@@ -86,8 +92,10 @@ export function initAuth() {
             middleName: byId('reg-middlename').value,
             email: byId('reg-email').value,
             password: pass,
-            role: byId('reg-role').value,
+            role: role, // Передаем проверенную роль
         };
+
+  
 
         try {
             await window.go.main.AuthService.Register(req);
