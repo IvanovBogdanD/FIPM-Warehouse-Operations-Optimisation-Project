@@ -20,15 +20,16 @@ type ReceivingItemRequest struct {
 }
 
 type ReceivingRequest struct {
-	Placement     string                 `json:"placement"`
-	X             int                    `json:"x"`
-	Y             int                    `json:"y"`
-	ProductID     int                    `json:"productId"`
-	Quantity      string                 `json:"quantity"`
-	Responsible   string                 `json:"responsible"`
-	Location      string                 `json:"location"`
-	ResponsibleID int                    `json:"responsibleId"`
-	Items         []ReceivingItemRequest `json:"items"`
+	Placement      string                 `json:"placement"`
+	X              int                    `json:"x"`
+	Y              int                    `json:"y"`
+	ProductID      int                    `json:"productId"`
+	Quantity       string                 `json:"quantity"`
+	Responsible    string                 `json:"responsible"`
+	Location       string                 `json:"location"`
+	ResponsibleID  int                    `json:"responsibleId"`
+	ResponsibleIDs []int                  `json:"responsibleIds"`
+	Items          []ReceivingItemRequest `json:"items"`
 }
 
 type ReceivingItem struct {
@@ -38,25 +39,36 @@ type ReceivingItem struct {
 }
 
 type ReceivingOrder struct {
-	Placement     string          `json:"placement"`
-	X             int             `json:"x"`
-	Y             int             `json:"y"`
-	ID            string          `json:"id"`
-	Number        string          `json:"number"`
-	Product       Product         `json:"product"`
-	Quantity      int64           `json:"quantity"`
-	Responsible   string          `json:"responsible"`
-	Location      string          `json:"location"`
-	Status        string          `json:"status"`
-	CreatedAt     time.Time       `json:"createdAt"`
-	ResponsibleID int             `json:"responsibleId"`
-	Items         []ReceivingItem `json:"items"`
+	Placement      string          `json:"placement"`
+	X              int             `json:"x"`
+	Y              int             `json:"y"`
+	ID             string          `json:"id"`
+	Number         string          `json:"number"`
+	Product        Product         `json:"product"`
+	Quantity       int64           `json:"quantity"`
+	Responsible    string          `json:"responsible"`
+	Location       string          `json:"location"`
+	Status         string          `json:"status"`
+	CreatedAt      time.Time       `json:"createdAt"`
+	ResponsibleID  int             `json:"responsibleId"`
+	ResponsibleIDs []int           `json:"responsibleIds"`
+	Items          []ReceivingItem `json:"items"`
 }
 
 func (s *DBService) CreateReceiving(request ReceivingRequest) (ReceivingOrder, error) {
 	s.ordersMu.Lock()
 	defer s.ordersMu.Unlock()
-	manager, err := s.findManager(request.ResponsibleID, request.Responsible)
+	ids := request.ResponsibleIDs
+	var managers []Employee
+	var err error
+	if ids == nil {
+		var manager Employee
+		manager, err = s.findManager(request.ResponsibleID, request.Responsible)
+		ids = []int{manager.ID}
+		managers = []Employee{manager}
+	} else {
+		managers, err = resolveManagers(s.db, ids)
+	}
 	if err != nil {
 		return ReceivingOrder{}, err
 	}
@@ -123,7 +135,7 @@ func (s *DBService) CreateReceiving(request ReceivingRequest) (ReceivingOrder, e
 	order := ReceivingOrder{
 		Placement: placement, X: request.X, Y: request.Y,
 		ID: id, Number: "П-" + strings.ToUpper(id[:8]), Product: first.Product, Quantity: first.Quantity,
-		Responsible: manager.Name, ResponsibleID: manager.ID, Location: first.Location,
+		Responsible: managerNames(managers), ResponsibleID: ids[0], ResponsibleIDs: append([]int(nil), ids...), Location: first.Location,
 		Status: "pending", CreatedAt: time.Now(), Items: items,
 	}
 	if s.receiving == nil {
@@ -153,14 +165,14 @@ func (s *DBService) CompleteReceiving(id string) (ReceivingOrder, error) {
 	if order.Status == "completed" {
 		return order, nil
 	}
-	if _, err := s.findManager(order.ResponsibleID, ""); err != nil {
-		return ReceivingOrder{}, err
-	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return ReceivingOrder{}, fmt.Errorf("начало приёмки: %w", err)
 	}
 	defer tx.Rollback()
+	if _, err := resolveManagers(tx, order.ResponsibleIDs); err != nil {
+		return ReceivingOrder{}, err
+	}
 	x, y := order.X, order.Y
 	if order.Placement == "manual" {
 		err = requireEmptyWarehouseCell(tx, x, y)

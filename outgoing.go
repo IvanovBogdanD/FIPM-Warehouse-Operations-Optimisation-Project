@@ -17,17 +17,17 @@ type OutgoingItemRequest struct {
 }
 
 type OutgoingRequest struct {
-	Type        string                `json:"type"`
-	Date        string                `json:"date"`
-	Address     string                `json:"address"`
-	Responsible string                `json:"responsible"`
-	Note        string                `json:"note"`
-	Items       []OutgoingItemRequest `json:"items"`
+	Type           string                `json:"type"`
+	Date           string                `json:"date"`
+	Address        string                `json:"address"`
+	ResponsibleIDs []int                 `json:"responsibleIds"`
+	Note           string                `json:"note"`
+	Items          []OutgoingItemRequest `json:"items"`
 }
 
 type CompleteOutgoingRequest struct {
-	Date        string `json:"date"`
-	CompletedBy string `json:"completedBy"`
+	Date           string `json:"date"`
+	CompletedByIDs []int  `json:"completedByIds"`
 }
 
 type ProductStock struct {
@@ -101,9 +101,8 @@ func (s *DBService) CreateOutgoing(request OutgoingRequest) (OutgoingResult, err
 		return OutgoingResult{}, errors.New("выберите отгрузку или списание")
 	}
 	address := strings.TrimSpace(request.Address)
-	responsible := strings.TrimSpace(request.Responsible)
-	if address == "" || responsible == "" {
-		return OutgoingResult{}, errors.New("укажите адрес и ФИО ответственного")
+	if address == "" {
+		return OutgoingResult{}, errors.New("укажите адрес")
 	}
 	date, err := parseOrderDate(request.Date)
 	if err != nil {
@@ -111,6 +110,10 @@ func (s *DBService) CreateOutgoing(request OutgoingRequest) (OutgoingResult, err
 	}
 	if len(request.Items) == 0 {
 		return OutgoingResult{}, errors.New("добавьте хотя бы один товар")
+	}
+	managers, err := resolveManagers(s.db, request.ResponsibleIDs)
+	if err != nil {
+		return OutgoingResult{}, err
 	}
 	reserved := s.reservedByProduct()
 	products := make([]Product, 0, len(request.Items))
@@ -145,7 +148,8 @@ func (s *DBService) CreateOutgoing(request OutgoingRequest) (OutgoingResult, err
 	id := fmt.Sprintf("%s-%d-%04d", prefix, now.Year(), s.orderSequence)
 	order := Order{
 		ID: id, Number: id, Type: request.Type, Status: "reserved", CreatedAt: now, ShipmentDate: &date,
-		Responsible: responsible, Address: address, Note: strings.TrimSpace(request.Note), Items: items,
+		Responsible: managerNames(managers), ResponsibleIDs: append([]int(nil), request.ResponsibleIDs...),
+		Address: address, Note: strings.TrimSpace(request.Note), Items: items,
 	}
 	if s.outgoing == nil {
 		s.outgoing = make(map[string]Order)
@@ -165,10 +169,6 @@ func (s *DBService) CompleteOutgoing(id string, request CompleteOutgoingRequest)
 	if order.Status != "reserved" {
 		return OutgoingResult{}, errors.New("заказ уже завершён или отменён")
 	}
-	completedBy := strings.TrimSpace(request.CompletedBy)
-	if completedBy == "" {
-		return OutgoingResult{}, errors.New("укажите ФИО сотрудника")
-	}
 	date, err := parseOrderDate(request.Date)
 	if err != nil {
 		return OutgoingResult{}, err
@@ -178,6 +178,10 @@ func (s *DBService) CompleteOutgoing(id string, request CompleteOutgoingRequest)
 		return OutgoingResult{}, fmt.Errorf("начало списания: %w", err)
 	}
 	defer tx.Rollback()
+	managers, err := resolveManagers(tx, request.CompletedByIDs)
+	if err != nil {
+		return OutgoingResult{}, err
+	}
 	products := make([]Product, 0, len(order.Items))
 	for _, item := range order.Items {
 		if err := consumeWarehouseStock(tx, item.ProductID, item.Quantity); err != nil {
@@ -199,7 +203,7 @@ func (s *DBService) CompleteOutgoing(id string, request CompleteOutgoingRequest)
 	}
 	order.Status = outgoingCompletedStatus[order.Type]
 	order.ShipmentDate = &date
-	order.CompletedBy = completedBy
+	order.CompletedBy = managerNames(managers)
 	s.outgoing[id] = order
 	return OutgoingResult{Order: order, Stock: s.stocksOf(products)}, nil
 }

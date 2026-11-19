@@ -2,9 +2,10 @@ import { callBackend } from '../../shared/api.js';
 import { byId, showError, showStatus } from '../../shared/dom.js';
 import { createProductSearch } from '../../shared/product-search.js';
 import { cellName, createWarehouseGrid } from '../../shared/warehouse-grid.js';
+import { createManagerPicker } from '../../shared/manager-picker.js';
 
 let receivingItems = [];
-let receivingManagers = [];
+let receivingManagers;
 let receivingOrder = null;
 let receivingBusy = false;
 let receivingLoaded = false;
@@ -74,7 +75,7 @@ function renderReceivingOrder() {
     byId('receiving-order-status').className = completed ? 'badge text-bg-success mb-3' : 'badge text-bg-primary mb-3';
     byId('receiving-order-status').textContent = completed ? 'Завершён' : 'Черновик';
     byId('receiving-order-id').textContent = `Номер: ${receivingOrder.number}`;
-    for (const [label, value] of [['Ответственный', receivingOrder.responsible], ['Позиций', receivingOrder.items.length], ['Ячейка', receivingOrder.location]]) {
+    for (const [label, value] of [['Ответственные', receivingOrder.responsible], ['Позиций', receivingOrder.items.length], ['Ячейка', receivingOrder.location]]) {
         const term = document.createElement('dt'); term.textContent = label;
         const definition = document.createElement('dd'); definition.textContent = value;
         byId('receiving-summary').append(term, definition);
@@ -112,20 +113,12 @@ export async function loadReceiving() {
         const [managers, stocks] = await Promise.all([callBackend('GetManagers'), callBackend('GetWarehouseStocks')]);
         receivingStocks = stocks;
         if (receivingOrder) receivingOrder = await callBackend('GetReceiving', receivingOrder.id);
-        const selected = byId('receiving-responsible').value;
-        const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Выберите менеджера';
-        const options = managers.map((manager) => {
-            const option = document.createElement('option'); option.value = String(manager.id); option.textContent = manager.name;
-            return option;
-        });
-        byId('receiving-responsible').replaceChildren(placeholder, ...options);
-        byId('receiving-responsible').value = selected;
-        receivingManagers = managers;
+        receivingManagers.render(managers);
         receivingLoaded = managers.length > 0;
         renderReceivingItems(); renderReceivingOrder(); renderPlacement();
         showStatus(byId('receiving-status'), receivingOrder
             ? receivingOrder.status === 'completed' ? 'Приёмка завершена. Остатки сохранены.' : 'Проверьте состав заказа. Остатки ещё не изменены.'
-            : managers.length ? 'Выберите менеджера и добавьте товары через поиск.' : 'Нет одобренных менеджеров. Создание приёмки недоступно.');
+            : managers.length ? 'Выберите ответственных менеджеров и добавьте товары через поиск.' : 'Нет одобренных менеджеров. Создание приёмки недоступно.');
     } catch (error) { showError(byId('receiving-status'), error); }
     finally { receivingBusy = false; updateReceivingControls(); }
 }
@@ -135,6 +128,7 @@ function resetReceiving() {
     receivingItems = [];
     receivingCellChoice = null;
     byId('receiving-form').reset();
+    receivingManagers.clear();
     renderPlacement();
     renderReceivingItems(); renderReceivingOrder(); updateReceivingControls();
 }
@@ -149,8 +143,8 @@ async function createReceiving(event) {
     event.preventDefault();
     if (receivingBusy || receivingOrder || !receivingLoaded) return;
     try {
-        const manager = receivingManagers.find((item) => item.id === Number(byId('receiving-responsible').value));
-        if (!manager) throw new Error('Выберите ответственного менеджера.');
+        const responsibleIds = receivingManagers.ids();
+        if (!responsibleIds.length) throw new Error('Выберите ответственных менеджеров.');
         if (!receivingItems.length) throw new Error('Добавьте хотя бы один товар.');
         const placement = byId('receiving-placement').value;
         if (placement === 'manual' && !receivingCellChoice) throw new Error('Выберите свободную ячейку на карте.');
@@ -160,7 +154,7 @@ async function createReceiving(event) {
         receivingBusy = true; receivingSearch.close(); updateReceivingControls();
         showStatus(byId('receiving-status'), 'Создание черновика...');
         applyReceivingOrder(await callBackend('CreateReceiving', {
-            responsibleId: manager.id, items, placement,
+            responsibleIds, items, placement,
             x: placement === 'manual' ? receivingCellChoice.x : 0,
             y: placement === 'manual' ? receivingCellChoice.y : 0,
         }));
@@ -193,6 +187,7 @@ async function cancelReceiving() {
 }
 
 export function initReceiving() {
+    receivingManagers = createManagerPicker('receiving-responsible');
     receivingGrid = createWarehouseGrid(byId('receiving-grid'), (cell) => { receivingCellChoice = cell; renderPlacement(); }, true);
     byId('receiving-placement').addEventListener('change', renderPlacement);
     receivingSearch = createProductSearch({ prefix: 'receiving', onChoose(product) {

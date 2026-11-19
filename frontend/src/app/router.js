@@ -8,6 +8,7 @@ import { loadInventory } from '../pages/inventory/inventory.js';
 import { loadOrders } from '../pages/orders/orders.js';
 import { loadOrderForm } from '../pages/order-form/order-form.js';
 import { loadWarehouse } from '../pages/warehouse/warehouse.js';
+import { loadReports } from '../pages/reports/reports.js';
 
 function updateMenuVisibility(role) {
     const menuItems = ['nav-home', 'nav-products', 'nav-warehouse', 'nav-orders', 'nav-inventory', 'nav-analytics', 'nav-analytics-header', 'nav-users'];
@@ -69,7 +70,8 @@ async function route() {
         userInitialEl.textContent = initial;
     }
 
-    let hash = location.hash.slice(1) || 'home';
+    const hash = location.hash.slice(1) || 'home';
+    const reportMatch = /^reports(?:\/(\d+))?$/.exec(hash);
 
     if (user.role === 'Кладовщик') {
         if (hash !== 'inventory') {
@@ -90,6 +92,11 @@ async function route() {
         }
     }
 
+    if (reportMatch && user.role !== 'Менеджер') {
+        location.hash = '#home';
+        return;
+    }
+
     updateMenuVisibility(user.role);
 
     const productMatch = /^product\/(\d+)$/.exec(hash);
@@ -97,6 +104,7 @@ async function route() {
     let page = 'home';
     if (hash === 'products') page = 'catalog';
     if (hash === 'warehouse') page = 'warehouse';
+    if (reportMatch) page = 'reports';
     if (productMatch) page = 'product';
     if (hash === 'orders') page = 'orders';
     if (orderFormMatch) page = 'order-form';
@@ -106,21 +114,19 @@ async function route() {
 
     const titles = {
         home: 'Главная', catalog: 'Товары', product: 'Товары / Карточка товара',
-        orders: 'Заказы', 'order-form': 'Заказы', receiving: 'Заказы', users: 'Пользователи', inventory: 'Инвентаризация', warehouse: 'Карта склада'
+        orders: 'Заказы', 'order-form': 'Заказы', receiving: 'Заказы', users: 'Пользователи',
+        inventory: 'Инвентаризация', warehouse: 'Карта склада', reports: 'Отчёты'
     };
 
-    for (const name of ['home', 'catalog', 'product', 'orders', 'order-form', 'receiving', 'users', 'inventory', 'warehouse']) {
+    for (const name of Object.keys(titles)) {
         const el = byId(`${name}-page`);
         if (el) el.hidden = page !== name;
     }
     byId('page-title').textContent = titles[page];
     
-    let activeHash = '#home';
+    let activeHash = `#${page}`;
     if (page === 'catalog' || page === 'product') activeHash = '#products';
     if (page === 'orders' || page === 'order-form' || page === 'receiving') activeHash = '#orders';
-    if (page === 'users') activeHash = '#users';
-    if (page === 'inventory') activeHash = '#inventory';
-    if (page === 'warehouse') activeHash = '#warehouse';
 
     document.querySelectorAll('.sidebar-menu a.nav-link').forEach((link) => {
         const active = link.hash === activeHash;
@@ -138,6 +144,7 @@ async function route() {
     if (page === 'users') await loadUsers();
     if (page === 'inventory') await loadInventory();
     if (page === 'warehouse') await loadWarehouse();
+    if (page === 'reports') await loadReports(reportMatch[1] ? Number(reportMatch[1]) : null);
 }
 
 export function initRouter() {

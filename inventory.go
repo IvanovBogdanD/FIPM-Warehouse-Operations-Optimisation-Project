@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -56,6 +57,7 @@ func (i *InventoryService) InitSchema() error {
 	for _, column := range []struct{ table, name, definition string }{
 		{"inventories", "inventory_date", "TEXT NOT NULL DEFAULT ''"},
 		{"inventories", "responsible", "TEXT NOT NULL DEFAULT ''"},
+		{"inventories", "responsible_managers", "TEXT NOT NULL DEFAULT '[]'"},
 		{"inventories", "commission", "TEXT NOT NULL DEFAULT ''"},
 		{"inventories", "kind", "TEXT NOT NULL DEFAULT 'partial'"},
 		{"inventories", "by_cells", "INTEGER NOT NULL DEFAULT 0"},
@@ -72,19 +74,23 @@ func (i *InventoryService) InitSchema() error {
 		}
 	}
 
-	return i.initInventoryCells()
+	if err := i.initInventoryCells(); err != nil {
+		return err
+	}
+	return i.initInventoryReports()
 }
 
 type Inventory struct {
-	ByCells     bool   `json:"byCells"`
-	ID          int    `json:"id"`
-	Status      string `json:"status"`
-	CreatedAt   string `json:"createdAt"`
-	CompletedAt string `json:"completedAt"`
-	Date        string `json:"date"`
-	Responsible string `json:"responsible"`
-	Commission  string `json:"commission"`
-	Kind        string `json:"kind"`
+	ByCells             bool       `json:"byCells"`
+	ID                  int        `json:"id"`
+	Status              string     `json:"status"`
+	CreatedAt           string     `json:"createdAt"`
+	CompletedAt         string     `json:"completedAt"`
+	Date                string     `json:"date"`
+	Responsible         string     `json:"responsible"`
+	ResponsibleManagers []Employee `json:"responsibleManagers"`
+	Commission          string     `json:"commission"`
+	Kind                string     `json:"kind"`
 }
 
 type InventoryItem struct {
@@ -106,8 +112,8 @@ type InventoryDetails struct {
 	Items []InventoryItem `json:"items"`
 }
 
-func (i *InventoryService) CreateInventory(responsible string) (Inventory, error) {
-	res, err := i.db.Exec(`INSERT INTO inventories (status, responsible) VALUES ('draft', ?)`, responsible)
+func (i *InventoryService) CreateInventory() (Inventory, error) {
+	res, err := i.db.Exec(`INSERT INTO inventories (status) VALUES ('draft')`)
 	if err != nil {
 		return Inventory{}, fmt.Errorf("create inventory: %w", err)
 	}
@@ -117,17 +123,28 @@ func (i *InventoryService) CreateInventory(responsible string) (Inventory, error
 		return Inventory{}, fmt.Errorf("get inventory id: %w", err)
 	}
 
-	return i.getInventory(int(id))
+	return readInventory(i.db, int(id))
 }
 
-func (i *InventoryService) getInventory(id int) (Inventory, error) {
-	var inv Inventory
-	err := i.db.QueryRow(`
-		SELECT id, status, created_at, COALESCE(completed_at, ''), inventory_date, responsible, commission, kind, by_cells
-		FROM inventories
-		WHERE id = ?
-	`, id).Scan(&inv.ID, &inv.Status, &inv.CreatedAt, &inv.CompletedAt, &inv.Date, &inv.Responsible, &inv.Commission, &inv.Kind, &inv.ByCells)
+const inventoryColumns = "id,status,created_at,COALESCE(completed_at,''),inventory_date,responsible,responsible_managers,commission,kind,by_cells"
 
+func scanInventory(row interface{ Scan(...any) error }) (Inventory, error) {
+	var inv Inventory
+	var managers []byte
+	if err := row.Scan(&inv.ID, &inv.Status, &inv.CreatedAt, &inv.CompletedAt, &inv.Date, &inv.Responsible, &managers, &inv.Commission, &inv.Kind, &inv.ByCells); err != nil {
+		return Inventory{}, err
+	}
+	if err := json.Unmarshal(managers, &inv.ResponsibleManagers); err != nil {
+		return Inventory{}, fmt.Errorf("чтение ответственных за инвентаризацию: %w", err)
+	}
+	if len(inv.ResponsibleManagers) > 0 {
+		inv.Responsible = managerNames(inv.ResponsibleManagers)
+	}
+	return inv, nil
+}
+
+func readInventory(db databaseReader, id int) (Inventory, error) {
+	inv, err := scanInventory(db.QueryRow("SELECT "+inventoryColumns+" FROM inventories WHERE id = ?", id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return inv, errors.New("inventory not found")
 	}
@@ -194,12 +211,16 @@ func (i *InventoryService) AddInventoryItems(inventoryID int, productIDs []int) 
 }
 
 func (i *InventoryService) GetInventory(inventoryID int) (InventoryDetails, error) {
-	inv, err := i.getInventory(inventoryID)
+	return readInventoryDetails(i.db, inventoryID)
+}
+
+func readInventoryDetails(db databaseReader, inventoryID int) (InventoryDetails, error) {
+	inv, err := readInventory(db, inventoryID)
 	if err != nil {
 		return InventoryDetails{}, err
 	}
 
-	rows, err := i.db.Query(`
+	rows, err := db.Query(`
 		SELECT ii.product_id, p.name, ii.system_count, ii.actual_count, ii.comment, p.article, p.storage_location,
 			COALESCE(ii.stock_id,0),COALESCE(ii.x,0),COALESCE(ii.y,0)
 		FROM inventory_items ii
@@ -302,13 +323,13 @@ func (i *InventoryService) SetActualCount(inventoryID int, productID int, actual
 }
 
 type InventoryParameters struct {
-	ByCells     bool   `json:"byCells"`
-	StockIDs    []int  `json:"stockIds"`
-	Date        string `json:"date"`
-	Responsible string `json:"responsible"`
-	Commission  string `json:"commission"`
-	Kind        string `json:"kind"`
-	ProductIDs  []int  `json:"productIds"`
+	ByCells        bool   `json:"byCells"`
+	StockIDs       []int  `json:"stockIds"`
+	Date           string `json:"date"`
+	ResponsibleIDs []int  `json:"responsibleIds"`
+	Commission     string `json:"commission"`
+	Kind           string `json:"kind"`
+	ProductIDs     []int  `json:"productIds"`
 }
 
 type InventoryCount struct {
@@ -352,15 +373,10 @@ func (i *InventoryService) PrepareInventory(id int, request InventoryParameters)
 	if _, err := parseOrderDate(request.Date); err != nil {
 		return InventoryDetails{}, err
 	}
-	request.Responsible = strings.TrimSpace(request.Responsible)
-	if request.Responsible == "" {
-		return InventoryDetails{}, errors.New("укажите ФИО сотрудника")
-	}
 	if request.Kind != "partial" && request.Kind != "full" {
 		return InventoryDetails{}, errors.New("выберите тип инвентаризации")
 	}
 	if request.ByCells {
-		request.Commission = strings.TrimSpace(request.Commission)
 		return i.prepareInventoryCells(id, request)
 	}
 	if request.Kind == "partial" && len(request.ProductIDs) == 0 {
@@ -458,7 +474,7 @@ func (i *InventoryService) PrepareInventory(id int, request InventoryParameters)
 		}
 	}
 
-	if _, err := tx.Exec("UPDATE inventories SET inventory_date=?,responsible=?,commission=?,kind=?,by_cells=0 WHERE id=?", request.Date, request.Responsible, strings.TrimSpace(request.Commission), request.Kind, id); err != nil {
+	if err := saveInventoryParameters(tx, id, request); err != nil {
 		return InventoryDetails{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -467,27 +483,22 @@ func (i *InventoryService) PrepareInventory(id int, request InventoryParameters)
 	return i.GetInventory(id)
 }
 
-type InventoryEmployee struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
+func saveInventoryParameters(tx *sql.Tx, id int, request InventoryParameters) error {
+	managers, err := resolveManagers(tx, request.ResponsibleIDs)
+	if err != nil {
+		return err
+	}
+	document, err := json.Marshal(managers)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`UPDATE inventories SET inventory_date=?,responsible_managers=?,commission=?,kind=?,by_cells=? WHERE id=?`,
+		request.Date, string(document), strings.TrimSpace(request.Commission), request.Kind, request.ByCells, id)
+	return err
 }
 
-func (i *InventoryService) GetInventoryEmployees() ([]InventoryEmployee, error) {
-	// Жесткий фильтр: только Менеджеры
-	rows, err := i.db.Query("SELECT id,trim(last_name || ' ' || first_name || ' ' || COALESCE(middle_name,'')) FROM users WHERE is_approved=1 AND role='Менеджер' ORDER BY last_name,first_name")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	employees := []InventoryEmployee{}
-	for rows.Next() {
-		var employee InventoryEmployee
-		if err := rows.Scan(&employee.ID, &employee.Name); err != nil {
-			return nil, err
-		}
-		employees = append(employees, employee)
-	}
-	return employees, rows.Err()
+func (i *InventoryService) GetInventoryEmployees() ([]Employee, error) {
+	return getManagers(i.db)
 }
 
 func (i *InventoryService) ApplyInventory(inventoryID int) error {
@@ -569,6 +580,9 @@ func (i *InventoryService) ApplyInventory(inventoryID int) error {
 	if err != nil {
 		return fmt.Errorf("complete inventory: %w", err)
 	}
+	if _, err := saveInventoryReport(tx, inventoryID); err != nil {
+		return err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit apply inventory: %w", err)
@@ -601,15 +615,15 @@ func (i *InventoryService) GetDraftInventory() (*InventoryDetails, error) {
 }
 
 func (i *InventoryService) GetInventories() ([]Inventory, error) {
-	rows, err := i.db.Query(`SELECT id,status,created_at,COALESCE(completed_at,''),inventory_date,responsible,commission,kind,by_cells FROM inventories ORDER BY id DESC`)
+	rows, err := i.db.Query("SELECT " + inventoryColumns + " FROM inventories ORDER BY id DESC")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	inventories := []Inventory{}
 	for rows.Next() {
-		var inventory Inventory
-		if err := rows.Scan(&inventory.ID, &inventory.Status, &inventory.CreatedAt, &inventory.CompletedAt, &inventory.Date, &inventory.Responsible, &inventory.Commission, &inventory.Kind, &inventory.ByCells); err != nil {
+		inventory, err := scanInventory(rows)
+		if err != nil {
 			return nil, err
 		}
 		inventories = append(inventories, inventory)

@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-var errManagerRequired = errors.New("выберите ответственного из одобренных пользователей с ролью «Менеджер»")
+var errManagerRequired = errors.New("выберите одного или нескольких одобренных менеджеров")
 
 type Employee struct {
 	ID   int    `json:"id"`
@@ -15,7 +15,11 @@ type Employee struct {
 }
 
 func (s *DBService) GetManagers() ([]Employee, error) {
-	rows, err := s.db.Query(`SELECT id, trim(last_name || ' ' || first_name || ' ' || COALESCE(middle_name, ''))
+	return getManagers(s.db)
+}
+
+func getManagers(db databaseReader) ([]Employee, error) {
+	rows, err := db.Query(`SELECT id, trim(last_name || ' ' || first_name || ' ' || COALESCE(middle_name, ''))
 		FROM users WHERE role = 'Менеджер' AND is_approved = 1 ORDER BY last_name, first_name, id`)
 	if err != nil {
 		return nil, fmt.Errorf("получение менеджеров: %w", err)
@@ -30,6 +34,38 @@ func (s *DBService) GetManagers() ([]Employee, error) {
 		managers = append(managers, manager)
 	}
 	return managers, rows.Err()
+}
+
+func resolveManagers(db databaseReader, ids []int) ([]Employee, error) {
+	if len(ids) == 0 {
+		return nil, errManagerRequired
+	}
+	managers, err := getManagers(db)
+	if err != nil {
+		return nil, err
+	}
+	available := make(map[int]Employee, len(managers))
+	for _, manager := range managers {
+		available[manager.ID] = manager
+	}
+	selected := make([]Employee, 0, len(ids))
+	for _, id := range ids {
+		manager, exists := available[id]
+		if !exists {
+			return nil, errManagerRequired
+		}
+		selected = append(selected, manager)
+		delete(available, id)
+	}
+	return selected, nil
+}
+
+func managerNames(managers []Employee) string {
+	names := make([]string, len(managers))
+	for index, manager := range managers {
+		names[index] = manager.Name
+	}
+	return strings.Join(names, ", ")
 }
 
 func (s *DBService) findManager(id int, name string) (Employee, error) {

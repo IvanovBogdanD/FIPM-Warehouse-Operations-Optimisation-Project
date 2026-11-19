@@ -8,6 +8,11 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+type databaseReader interface {
+	QueryRow(string, ...any) *sql.Row
+	Query(string, ...any) (*sql.Rows, error)
+}
+
 type DBService struct {
 	db                 *sql.DB
 	ordersMu           sync.Mutex

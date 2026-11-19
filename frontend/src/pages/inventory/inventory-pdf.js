@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { inventoryNumber, inventoryDate, inventoryTotals } from './inventory-data.js';
+import { inventoryNumber, inventoryDate, inventorySigners, inventoryTotals } from './inventory-data.js';
 
 export function createInventoryPDF(details, font) {
     const totals = inventoryTotals(details);
@@ -21,7 +21,7 @@ export function createInventoryPDF(details, font) {
         if (y + lines.length * 5 > 280) { pdf.addPage(); y = 18; }
         pdf.text(lines, 12, y); y += lines.length * 5 + 3;
     };
-    paragraph(`Проводит: ${details.responsible || 'Не указано'}. Комиссия: ${details.commission || 'Не указана'}.`);
+    paragraph(`Ответственные — ${details.responsible || 'не указаны'}. Комиссия — ${details.commission || 'не указана'}.`);
     paragraph(`Проведена ${details.kind === 'full' ? 'полная' : 'выборочная'} инвентаризация товаров. Результаты:`);
     const widths = [8, 58, 20, 24, 19, 19, 19, 19];
     const header = ['№', 'Наименование', 'Артикул', 'Место хранения', 'Учёт, шт.', 'Факт, шт.', 'Недостача', 'Излишек'];
@@ -44,6 +44,6 @@ export function createInventoryPDF(details, font) {
     pdf.setFontSize(10);
     paragraph(details.status === 'completed' ? `Остатки в системе скорректированы по фактическим данным. Дата проведения: ${inventoryDate(details.date)}.` : 'Черновик акта. Корректировка остатков ещё не применена.');
     for (const item of details.items.filter((item) => item.comment)) paragraph(`${item.productName}: ${item.comment}`);
-    for (const person of [details.responsible, ...details.commission.split(', ')].filter(Boolean)) { y += 8; paragraph(`${person} · Подпись ____________________`); }
+    for (const person of inventorySigners(details)) { y += 8; paragraph(`${person} · Подпись ____________________`); }
     return pdf;
 }

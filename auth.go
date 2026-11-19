@@ -108,34 +108,39 @@ func (a *AuthService) Login(email, password string) (*UserResponse, error) {
 	return &user, nil
 }
 
-// SeedAdmin создает первого администратора, если база пуста
-func (a *AuthService) SeedAdmin() error {
-	var count int
-	err := a.db.QueryRow(`SELECT COUNT(id) FROM users`).Scan(&count)
+func (a *AuthService) seedDefaultUsers() error {
+	tx, err := a.db.Begin()
 	if err != nil {
-		return fmt.Errorf("проверка пользователей: %w", err)
+		return err
+	}
+	defer tx.Rollback()
+
+	defaultUsers := []struct{ email, lastName, firstName, middleName, role string }{
+		{"admin@mail.ru", "Админов", "Админ", "Админович", "Администратор"},
+		{"clad@mail.ru", "Складской", "Кладовщик", "", "Кладовщик"},
+		{"manager@mail.ru", "Складской", "Менеджер", "", "Менеджер"},
 	}
 
-	// Если пользователи уже есть, ничего не делаем
-	if count > 0 {
-		return nil
+	for _, user := range defaultUsers {
+		var exists bool
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM users WHERE email = ?)`, user.email).Scan(&exists); err != nil {
+			return fmt.Errorf("проверка пользователя %s: %w", user.email, err)
+		}
+		if exists {
+			continue
+		}
+
+		hash, err := bcrypt.GenerateFromPassword([]byte("a"), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("хэширование пароля %s: %w", user.email, err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO users (last_name, first_name, middle_name, email, password_hash, role, is_approved)
+			VALUES (?, ?, ?, ?, ?, ?, 1)
+		`, user.lastName, user.firstName, user.middleName, user.email, string(hash), user.role); err != nil {
+			return fmt.Errorf("создание пользователя %s: %w", user.email, err)
+		}
 	}
 
-	// Хэшируем пароль "a"
-	hash, err := bcrypt.GenerateFromPassword([]byte("a"), bcrypt.DefaultCost)
-	if err != nil {
-		return fmt.Errorf("хэширование пароля админа: %w", err)
-	}
-
-	// Создаем админа (is_approved = 1, чтобы мог войти сразу)
-	_, err = a.db.Exec(`
-		INSERT INTO users (last_name, first_name, middle_name, email, password_hash, role, is_approved) 
-		VALUES ('Админов', 'Админ', 'Админович', 'admin@mail.ru', ?, 'Администратор', 1)
-	`, string(hash))
-
-	if err != nil {
-		return fmt.Errorf("создание админа: %w", err)
-	}
-
-	return nil
+	return tx.Commit()
 }
