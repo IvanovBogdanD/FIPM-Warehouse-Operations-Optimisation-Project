@@ -14,18 +14,19 @@ type OrderItem struct {
 }
 
 type Order struct {
-	ID           string      `json:"id"`
-	Number       string      `json:"number"`
-	Type         string      `json:"type"`
-	Status       string      `json:"status"`
-	CreatedAt    time.Time   `json:"createdAt"`
-	ShipmentDate *time.Time  `json:"shipmentDate"`
-	Responsible  string      `json:"responsible"`
-	Location     string      `json:"location"`
-	Address      string      `json:"address"`
-	Note         string      `json:"note"`
-	CompletedBy  string      `json:"completedBy"`
-	Items        []OrderItem `json:"items"`
+	ID             string      `json:"id"`
+	Number         string      `json:"number"`
+	Type           string      `json:"type"`
+	Status         string      `json:"status"`
+	CreatedAt      time.Time   `json:"createdAt"`
+	ShipmentDate   *time.Time  `json:"shipmentDate"`
+	Responsible    string      `json:"responsible"`
+	ResponsibleIDs []int       `json:"responsibleIds"`
+	Location       string      `json:"location"`
+	Address        string      `json:"address"`
+	Note           string      `json:"note"`
+	CompletedBy    string      `json:"completedBy"`
+	Items          []OrderItem `json:"items"`
 }
 
 func (o ReceivingOrder) toOrder() Order {
@@ -39,7 +40,7 @@ func (o ReceivingOrder) toOrder() Order {
 	}
 	return Order{
 		ID: o.ID, Number: o.Number, Type: "receiving", Status: o.Status,
-		CreatedAt: o.CreatedAt, Responsible: o.Responsible, Location: location, Items: items,
+		CreatedAt: o.CreatedAt, Responsible: o.Responsible, ResponsibleIDs: o.ResponsibleIDs, Location: location, Items: items,
 	}
 }
 

@@ -32,25 +32,49 @@ func TestInventorySchemaUpgradePreservesData(t *testing.T) {
 }
 
 func TestInventoryCountCorrectionAndPersistence(t *testing.T) {
-	s, path := testStore(t)
+	s, path := testOrderStore(t)
 	i := NewInventoryService(s.db)
 	if err := i.InitSchema(); err != nil {
 		t.Fatal(err)
 	}
-	draft, err := i.CreateInventory("Test User")
+	draft, err := i.CreateInventory()
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := InventoryParameters{Date: "2026-11-07", Responsible: " Иванов И.И. ", Commission: "Петров П.П., Сидоров С.С.", Kind: "partial", ProductIDs: []int{1, 2}}
+	request := InventoryParameters{Date: "2026-11-07", ResponsibleIDs: []int{1, 2}, Commission: "Петров П.П., Сидоров С.С.", Kind: "partial", ProductIDs: []int{1, 2}}
 	details, err := i.PrepareInventory(draft.ID, request)
-	if err != nil || len(details.Items) != 2 || details.Responsible != "Иванов И.И." || details.Date != request.Date {
+	if err != nil || len(details.Items) != 2 || details.Responsible != "Иванов Иван Иванович, Петрова А.С." || len(details.ResponsibleManagers) != 2 || details.Date != request.Date {
 		t.Fatalf("details=%+v error=%v", details, err)
+	}
+	if _, err := i.GenerateInventoryReport(draft.ID); err == nil {
+		t.Fatal("report generated before counting")
 	}
 	eight, seven, negative := 8, 7, -1
 	counts := []InventoryCount{{ProductID: 1, ActualCount: &eight, Comment: " Повреждена упаковка "}, {ProductID: 2, ActualCount: &seven}}
 	details, err = i.SaveInventoryCounts(draft.ID, counts)
 	if err != nil || details.Items[0].Comment != "Повреждена упаковка" {
 		t.Fatalf("details=%+v error=%v", details, err)
+	}
+	reports, err := i.GetInventoryReports()
+	if err != nil || len(reports) != 0 {
+		t.Fatalf("unformed reports=%v error=%v", reports, err)
+	}
+	if _, err := i.GenerateInventoryReport(draft.ID); err != nil {
+		t.Fatal(err)
+	}
+	reports, err = i.GetInventoryReports()
+	if err != nil || len(reports) != 1 || reports[0].ID != draft.ID || reports[0].Status != "draft" {
+		t.Fatalf("draft reports=%v error=%v", reports, err)
+	}
+	if err := i.SetActualCount(draft.ID, 1, 9); err != nil {
+		t.Fatal(err)
+	}
+	archived, err := i.GetInventoryReport(draft.ID)
+	if err != nil || *archived.Items[0].ActualCount != 8 {
+		t.Fatalf("draft report changed after editing: %+v error=%v", archived, err)
+	}
+	if err := i.SetActualCount(draft.ID, 1, 8); err != nil {
+		t.Fatal(err)
 	}
 	product, _ := s.GetProduct(1)
 	if product.Count != 10 {
@@ -91,19 +115,28 @@ func TestInventoryCountCorrectionAndPersistence(t *testing.T) {
 	if err != nil || len(list) != 1 || list[0].ID != draft.ID {
 		t.Fatalf("list=%v error=%v", list, err)
 	}
+	reports, err = reopened.GetInventoryReports()
+	if err != nil || len(reports) != 1 || reports[0].ID != draft.ID || reports[0].Status != "completed" {
+		t.Fatalf("completed reports=%v error=%v", reports, err)
+	}
+	archived, err = reopened.GetInventoryReport(draft.ID)
+	if err != nil || !reflect.DeepEqual(archived, details) {
+		t.Fatalf("archived=%+v error=%v", archived, err)
+	}
 }
 
 func TestInventoryFullAndValidation(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	i := NewInventoryService(s.db)
 	if err := i.InitSchema(); err != nil {
 		t.Fatal(err)
 	}
-	draft, _ := i.CreateInventory("Test User")
-	valid := InventoryParameters{Date: "2026-11-07", Responsible: "Иванов", Kind: "partial", ProductIDs: []int{1}}
+	draft, _ := i.CreateInventory()
+	valid := InventoryParameters{Date: "2026-11-07", ResponsibleIDs: []int{1}, Kind: "partial", ProductIDs: []int{1}}
 	for _, change := range []func(*InventoryParameters){
 		func(r *InventoryParameters) { r.Date = "2026-02-30" },
-		func(r *InventoryParameters) { r.Responsible = " " },
+		func(r *InventoryParameters) { r.ResponsibleIDs = nil },
+		func(r *InventoryParameters) { r.ResponsibleIDs = []int{1, 3} },
 		func(r *InventoryParameters) { r.Kind = "unknown" },
 		func(r *InventoryParameters) { r.ProductIDs = nil },
 		func(r *InventoryParameters) { r.ProductIDs = []int{1, 999} },

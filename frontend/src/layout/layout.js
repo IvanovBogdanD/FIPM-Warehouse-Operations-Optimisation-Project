@@ -8,15 +8,28 @@ import orderFormHtml from '../pages/order-form/order-form.html?raw';
 import authHtml from '../pages/auth/auth.html?raw';
 import usersHtml from '../pages/users/users.html?raw';
 import inventoryHtml from '../pages/inventory/inventory.html?raw';
+import inventoryActHtml from '../pages/inventory/inventory-act.html?raw';
+import reportsHtml from '../pages/reports/reports.html?raw';
 import warehouseHtml from '../pages/warehouse/warehouse.html?raw';
+import managerPickerHtml from '../shared/manager-picker.html?raw';
 import { byId } from '../shared/dom.js';
 import { withIcons } from '../shared/icons.js';
 
+function withManagerPicker(html, id) {
+    return html.replace(`{{${id}}}`, managerPickerHtml.replaceAll('manager-picker', id));
+}
+
 export function mountLayout() {
     byId('app').insertAdjacentHTML('beforeend', `<div id="main-layout" class="app-wrapper d-none">${withIcons(layoutHtml)}</div>`);
+    const inventoryForm = withManagerPicker(inventoryHtml, 'inventory-responsible');
     
     byId('page-content').insertAdjacentHTML('beforeend', withIcons(
-        homeHtml + catalogHtml + productHtml + ordersHtml + orderFormHtml + receivingHtml + usersHtml + inventoryHtml + warehouseHtml
+        homeHtml + catalogHtml + productHtml + usersHtml + warehouseHtml
+        + withManagerPicker(ordersHtml, 'order-complete-person')
+        + withManagerPicker(orderFormHtml, 'order-form-responsible')
+        + withManagerPicker(receivingHtml, 'receiving-responsible')
+        + withManagerPicker(inventoryForm, 'inventory-commission-toggle').replace('{{inventory-act}}', inventoryActHtml)
+        + reportsHtml.replace('{{inventory-act}}', inventoryActHtml.replaceAll('inventory-report-', 'reports-act-'))
     ));
     
     byId('app').insertAdjacentHTML('beforeend', `<div id="auth-page" class="d-none">${authHtml}</div>`);

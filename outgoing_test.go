@@ -10,7 +10,7 @@ import (
 
 func outgoingRequest() OutgoingRequest {
 	return OutgoingRequest{
-		Type: "shipment", Date: "2026-11-20", Address: " ул. Складская, 14 ", Responsible: " Петрова А.С. ", Note: " до 12:00 ",
+		Type: "shipment", Date: "2026-11-20", Address: " ул. Складская, 14 ", ResponsibleIDs: []int{1, 2}, Note: " до 12:00 ",
 		Items: []OutgoingItemRequest{{ProductID: 1, Quantity: "4"}, {ProductID: 2, Quantity: "2"}},
 	}
 }
@@ -24,15 +24,16 @@ func checkProductStock(t *testing.T, s *DBService, id, count int, reserved, free
 }
 
 func completeRequest() CompleteOutgoingRequest {
-	return CompleteOutgoingRequest{Date: "2026-11-21", CompletedBy: " Кузнецов Р.Н. "}
+	return CompleteOutgoingRequest{Date: "2026-11-21", CompletedByIDs: []int{2, 1}}
 }
 
 func TestOutgoingValidation(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	for name, change := range map[string]func(*OutgoingRequest){
 		"type":        func(r *OutgoingRequest) { r.Type = "gift" },
 		"address":     func(r *OutgoingRequest) { r.Address = " " },
-		"responsible": func(r *OutgoingRequest) { r.Responsible = "\t" },
+		"responsible": func(r *OutgoingRequest) { r.ResponsibleIDs = nil },
+		"clerk":       func(r *OutgoingRequest) { r.ResponsibleIDs = []int{1, 3} },
 		"date":        func(r *OutgoingRequest) { r.Date = "20.11.2026" },
 		"no date":     func(r *OutgoingRequest) { r.Date = "" },
 		"bad date":    func(r *OutgoingRequest) { r.Date = "2026-02-30" },
@@ -62,7 +63,7 @@ func TestOutgoingValidation(t *testing.T) {
 }
 
 func TestOutgoingReservesWithoutChangingStock(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	beforeSchema := schema(t, s.db)
 	result, err := s.CreateOutgoing(outgoingRequest())
 	if err != nil {
@@ -72,7 +73,7 @@ func TestOutgoingReservesWithoutChangingStock(t *testing.T) {
 	if order.Status != "reserved" || order.Type != "shipment" || !strings.HasPrefix(order.Number, "З-") || order.Number != order.ID {
 		t.Fatalf("order=%+v", order)
 	}
-	if order.Address != "ул. Складская, 14" || order.Responsible != "Петрова А.С." || order.Note != "до 12:00" {
+	if order.Address != "ул. Складская, 14" || order.Responsible != "Иванов Иван Иванович, Петрова А.С." || !reflect.DeepEqual(order.ResponsibleIDs, []int{1, 2}) || order.Note != "до 12:00" {
 		t.Fatalf("order=%+v", order)
 	}
 	if order.ShipmentDate == nil || order.ShipmentDate.Format("2006-01-02") != "2026-11-20" || order.CreatedAt.IsZero() {
@@ -109,7 +110,7 @@ func TestOutgoingReservesWithoutChangingStock(t *testing.T) {
 }
 
 func TestOutgoingShipmentWritesOffAndClearsReservation(t *testing.T) {
-	s, path := testStore(t)
+	s, path := testOrderStore(t)
 	created, err := s.CreateOutgoing(outgoingRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +120,7 @@ func TestOutgoingShipmentWritesOffAndClearsReservation(t *testing.T) {
 		t.Fatal(err)
 	}
 	order := result.Order
-	if order.Status != "shipped" || order.CompletedBy != "Кузнецов Р.Н." || order.ShipmentDate.Format("2006-01-02") != "2026-11-21" {
+	if order.Status != "shipped" || order.CompletedBy != "Петрова А.С., Иванов Иван Иванович" || order.ShipmentDate.Format("2006-01-02") != "2026-11-21" {
 		t.Fatalf("order=%+v", order)
 	}
 	wantStock := []ProductStock{{Product: Product{ID: 1, Name: "Молоко", Count: 6}, Free: 6}, {Product: Product{ID: 2, Name: "Хлеб", Count: 3}, Free: 3}}
@@ -147,7 +148,7 @@ func TestOutgoingShipmentWritesOffAndClearsReservation(t *testing.T) {
 }
 
 func TestOutgoingWriteoff(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	request := outgoingRequest()
 	request.Type = "writeoff"
 	request.Note = "брак"
@@ -166,7 +167,7 @@ func TestOutgoingWriteoff(t *testing.T) {
 }
 
 func TestOutgoingCancelReleasesReservation(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	created, err := s.CreateOutgoing(outgoingRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -189,13 +190,14 @@ func TestOutgoingCancelReleasesReservation(t *testing.T) {
 }
 
 func TestCompleteOutgoingValidation(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	created, err := s.CreateOutgoing(outgoingRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, request := range []CompleteOutgoingRequest{
-		{Date: "2026-11-21", CompletedBy: " "}, {Date: "", CompletedBy: "Иванов"}, {Date: "21.11.2026", CompletedBy: "Иванов"},
+		{Date: "2026-11-21"}, {Date: "2026-11-21", CompletedByIDs: []int{1, 3}},
+		{Date: "", CompletedByIDs: []int{1}}, {Date: "21.11.2026", CompletedByIDs: []int{1}},
 	} {
 		if _, err := s.CompleteOutgoing(created.Order.ID, request); err == nil {
 			t.Errorf("invalid request accepted: %+v", request)
@@ -208,7 +210,7 @@ func TestCompleteOutgoingValidation(t *testing.T) {
 }
 
 func TestCompleteOutgoingRollsBackAllItems(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	s.db.SetMaxOpenConns(1)
 	created, err := s.CreateOutgoing(outgoingRequest())
 	if err != nil {
@@ -234,7 +236,7 @@ func TestCompleteOutgoingRollsBackAllItems(t *testing.T) {
 }
 
 func TestCompleteOutgoingSQLiteFailureAndRetry(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	created, err := s.CreateOutgoing(outgoingRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -263,7 +265,7 @@ func TestCompleteOutgoingSQLiteFailureAndRetry(t *testing.T) {
 }
 
 func TestConcurrentOutgoingNeverOverReserves(t *testing.T) {
-	s, _ := testStore(t)
+	s, _ := testOrderStore(t)
 	s.db.SetMaxOpenConns(1)
 	request := outgoingRequest()
 	request.Items = []OutgoingItemRequest{{ProductID: 1, Quantity: "1"}}

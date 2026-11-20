@@ -12,7 +12,10 @@
         <form id="receiving-form">
           <fieldset id="receiving-fields" class="border-0 p-0 m-0" disabled>
             <div class="card-body">
-              <div class="mb-3"><label class="form-label" for="receiving-responsible">Ответственный менеджер</label><select id="receiving-responsible" class="form-select" required><option value="">Выберите менеджера</option></select></div>
+              <div class="mb-3">
+                <label class="form-label" for="receiving-responsible">Ответственные менеджеры</label>
+                {{receiving-responsible}}
+              </div>
               <div class="mb-3"><label class="form-label" for="receiving-placement">Размещение всей приёмки</label><select id="receiving-placement" class="form-select"><option value="auto">Автоматически в свободную ячейку</option><option value="manual">Выбрать ячейку на карте</option></select></div>
               <div id="receiving-cell-picker" class="mb-3" hidden><p id="receiving-cell-label" class="mb-2" role="status">Выберите свободную ячейку.</p><div id="receiving-grid" class="table-responsive"></div></div>
               <p class="small text-body-secondary">Все товары этой приёмки займут одну ячейку после подтверждения. Черновик не занимает место.</p>

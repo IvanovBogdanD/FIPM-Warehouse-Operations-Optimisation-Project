@@ -80,6 +80,8 @@ func TestBatchReceivingValidationAndManagerChanges(t *testing.T) {
 		func(r *ReceivingRequest) { r.ResponsibleID = 3 },
 		func(r *ReceivingRequest) { r.ResponsibleID = 5 },
 		func(r *ReceivingRequest) { r.ResponsibleID = 0; r.Responsible = "Придуманное имя" },
+		func(r *ReceivingRequest) { r.ResponsibleIDs = []int{1, 5} },
+		func(r *ReceivingRequest) { r.ResponsibleIDs = []int{1, 1} },
 	} {
 		request := batchReceivingRequest()
 		change(&request)
@@ -87,11 +89,13 @@ func TestBatchReceivingValidationAndManagerChanges(t *testing.T) {
 			t.Fatalf("invalid request accepted: %+v", request)
 		}
 	}
-	order, err := s.CreateReceiving(batchReceivingRequest())
-	if err != nil {
-		t.Fatal(err)
+	request := batchReceivingRequest()
+	request.ResponsibleIDs = []int{1, 2}
+	order, err := s.CreateReceiving(request)
+	if err != nil || order.Responsible != "Иванов Иван Иванович, Петрова А.С." || !reflect.DeepEqual(order.ResponsibleIDs, request.ResponsibleIDs) {
+		t.Fatalf("order=%+v error=%v", order, err)
 	}
-	if _, err := s.db.Exec("UPDATE users SET role='Кладовщик' WHERE id=1"); err != nil {
+	if _, err := s.db.Exec("UPDATE users SET role='Кладовщик' WHERE id=2"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.CompleteReceiving(order.ID); err == nil {

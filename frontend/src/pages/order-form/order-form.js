@@ -1,6 +1,7 @@
 import { callBackend } from '../../shared/api.js';
 import { byId, showError, showStatus } from '../../shared/dom.js';
 import { showModal } from '../../shared/modal.js';
+import { createManagerPicker } from '../../shared/manager-picker.js';
 import { createOrderCell, createStockChangeCell, openOrder, orderQuantity, ORDER_TYPES, todayForInput } from '../orders/orders.js';
 
 let formType = 'shipment';
@@ -10,6 +11,7 @@ let formLoaded = false;
 let formBusy = false;
 let formRequest = 0;
 let createdOrderId = null;
+let orderFormManagers;
 
 function isValidQuantity(value) {
     return /^[0-9]+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0;
@@ -22,9 +24,9 @@ function stockOf(item) {
 export function buildOrderRequest() {
     const date = byId('order-form-date').value;
     const address = byId('order-form-address').value.trim();
-    const responsible = byId('order-form-responsible').value.trim();
+    const responsibleIds = orderFormManagers.ids();
     if (!date) throw new Error('Укажите дату.');
-    if (!responsible || !address) throw new Error('Укажите ФИО ответственного и адрес.');
+    if (!responsibleIds.length || !address) throw new Error('Выберите ответственных менеджеров и укажите адрес.');
     if (formItems.length === 0) throw new Error('Добавьте хотя бы один товар.');
     for (const item of formItems) {
         const stock = stockOf(item);
@@ -32,7 +34,7 @@ export function buildOrderRequest() {
         if (Number(item.quantity) > stock.free) throw new Error(`Исправьте количество «${stock.name}»: свободно только ${stock.free} шт.`);
     }
     return {
-        type: formType, date, address, responsible, note: byId('order-form-note').value.trim(),
+        type: formType, date, address, responsibleIds, note: byId('order-form-note').value.trim(),
         items: formItems.map((item) => ({ productId: item.productId, quantity: item.quantity })),
     };
 }
@@ -156,15 +158,18 @@ export async function loadOrderForm(type) {
     if (!byId('order-form-date').value) byId('order-form-date').value = todayForInput();
     formLoaded = false;
     updateOrderFormControls();
-    showStatus(byId('order-form-status'), 'Загрузка товаров…');
+    showStatus(byId('order-form-status'), 'Загрузка товаров и менеджеров…');
     try {
-        const stocks = await callBackend('GetProductStocks');
+        const [stocks, managers] = await Promise.all([callBackend('GetProductStocks'), callBackend('GetManagers')]);
         if (request !== formRequest) return;
         formStocks = stocks;
         formItems = formItems.filter((item) => stockOf(item));
-        formLoaded = stocks.length > 0;
+        orderFormManagers.render(managers);
+        formLoaded = stocks.length > 0 && managers.length > 0;
         renderOrderForm();
-        showStatus(byId('order-form-status'), stocks.length ? '' : 'Каталог пуст. Создать заказ нельзя.');
+        showStatus(byId('order-form-status'), formLoaded ? '' : (
+            stocks.length ? 'Нет одобренных менеджеров. Создание заказа недоступно.' : 'Каталог пуст. Создать заказ нельзя.'
+        ));
     } catch (error) {
         if (request !== formRequest) return;
         showError(byId('order-form-status'), error);
@@ -202,6 +207,7 @@ async function submitOrderForm(event) {
         showOrderCreated(order, stock);
         formItems = [];
         byId('order-form').reset();
+        orderFormManagers.clear();
         await loadOrderForm(formType);
     } catch (error) {
         showError(byId('order-form-status'), error);
@@ -212,6 +218,7 @@ async function submitOrderForm(event) {
 }
 
 export function initOrderForm() {
+    orderFormManagers = createManagerPicker('order-form-responsible');
     byId('order-form').addEventListener('submit', submitOrderForm);
     byId('order-form-reload').addEventListener('click', () => loadOrderForm(formType));
     byId('order-form-date').addEventListener('input', renderOrderFormSummary);

@@ -125,8 +125,7 @@ func (i *InventoryService) prepareInventoryCells(id int, request InventoryParame
 	if added == 0 || (request.Kind == "partial" && added != len(selected)) {
 		return InventoryDetails{}, errors.New("выбранная позиция больше не находится в ячейке, обновите выбор")
 	}
-	if _, err := tx.Exec("UPDATE inventories SET inventory_date=?,responsible=?,commission=?,kind=?,by_cells=1 WHERE id=?",
-		request.Date, request.Responsible, request.Commission, request.Kind, id); err != nil {
+	if err := saveInventoryParameters(tx, id, request); err != nil {
 		return InventoryDetails{}, err
 	}
 	if err := tx.Commit(); err != nil {

@@ -7,6 +7,11 @@ export function inventoryDate(value) {
     return value ? value.split('-').reverse().join('.') : 'Не указана';
 }
 
+export function inventorySigners(details) {
+    const managers = details.responsibleManagers?.length ? details.responsibleManagers.map((manager) => manager.name) : [details.responsible];
+    return [...managers, ...details.commission.split(', ')].filter(Boolean);
+}
+
 export function inventoryTotals(details) {
     const totals = { system: 0, actual: 0, shortage: 0, surplus: 0, matched: 0 };
     for (const item of details.items) {

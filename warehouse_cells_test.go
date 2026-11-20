@@ -190,11 +190,11 @@ func TestInventoryCountsSameProductSeparatelyByCell(t *testing.T) {
 	if err := i.InitSchema(); err != nil {
 		t.Fatal(err)
 	}
-	inv, err := i.CreateInventory("Проверка")
+	inv, err := i.CreateInventory()
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := InventoryParameters{Date: "2026-11-14", Responsible: "Проверка", Kind: "partial", ByCells: true,
+	r := InventoryParameters{Date: "2026-11-14", ResponsibleIDs: []int{1, 2}, Kind: "partial", ByCells: true,
 		StockIDs: []int{locations[0].ID, locations[1].ID}}
 	details, err := i.PrepareInventory(inv.ID, r)
 	if err != nil || len(details.Items) != 2 || !details.ByCells {
@@ -229,8 +229,8 @@ func TestInventoryRejectsChangedCellAndKeepsLegacyDocuments(t *testing.T) {
 	if err := i.InitSchema(); err != nil {
 		t.Fatal(err)
 	}
-	inv, _ := i.CreateInventory("Проверка")
-	details, err := i.PrepareInventory(inv.ID, InventoryParameters{Date: "2026-11-14", Responsible: "Проверка", Kind: "full", ByCells: true})
+	inv, _ := i.CreateInventory()
+	details, err := i.PrepareInventory(inv.ID, InventoryParameters{Date: "2026-11-14", ResponsibleIDs: []int{1, 2}, Kind: "full", ByCells: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestInventoryRejectsChangedCellAndKeepsLegacyDocuments(t *testing.T) {
 	}
 	checkStock(t, s, 6)
 	checkWarehouseTotals(t, s)
-	legacy, _ := i.CreateInventory("Старая проверка")
+	legacy, _ := i.CreateInventory()
 	if err := i.AddInventoryItems(legacy.ID, []int{1}); err != nil {
 		t.Fatal(err)
 	}
@@ -283,6 +283,10 @@ func TestInventoryCellMigrationKeepsOldAct(t *testing.T) {
 	details, err := service.GetInventory(9)
 	if err != nil || details.ByCells || details.Status != "completed" || len(details.Items) != 1 || details.Items[0].StockID != 0 || *details.Items[0].ActualCount != 8 || details.Items[0].Comment != "Старая проверка" {
 		t.Fatalf("old act lost: %+v %v", details, err)
+	}
+	report, err := service.GetInventoryReport(9)
+	if err != nil || !reflect.DeepEqual(report, details) {
+		t.Fatalf("old act missing from archive: %+v %v", report, err)
 	}
 	var id int
 	if err := s.db.QueryRow("SELECT id FROM inventory_items WHERE inventory_id=9").Scan(&id); err != nil || id != 17 {

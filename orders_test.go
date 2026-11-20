@@ -37,7 +37,7 @@ func TestOrdersListAndComposition(t *testing.T) {
 	}
 	want := Order{
 		ID: second.ID, Number: "П-" + strings.ToUpper(second.ID[:8]), Type: "receiving", Status: "pending",
-		CreatedAt: second.CreatedAt, Responsible: "Петрова А.С.", Location: "A-01",
+		CreatedAt: second.CreatedAt, Responsible: "Петрова А.С.", ResponsibleIDs: []int{2}, Location: "A-01",
 		Items: []OrderItem{{ProductID: 2, Name: "Хлеб", Quantity: 7, Location: "A-01"}},
 	}
 	if !reflect.DeepEqual(orders[0], want) {

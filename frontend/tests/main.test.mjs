@@ -5,11 +5,16 @@ import vm from 'node:vm';
 
 const templateFiles = ['index.html', 'src/layout/layout.html', 'src/pages/home/home.html',
     'src/pages/catalog/catalog.html', 'src/pages/catalog/product.html', 'src/pages/orders/orders.html', 'src/pages/order-form/order-form.html', 'src/pages/receiving/receiving.html',
-    'src/pages/auth/auth.html', 'src/pages/users/users.html', 'src/pages/inventory/inventory.html', 'src/pages/warehouse/warehouse.html'];
-const html = (await Promise.all(templateFiles.map((file) => readFile(new URL(`../${file}`, import.meta.url), 'utf8')))).join('\n');
-const moduleFiles = ['shared/warehouse-grid.js', 'shared/api.js', 'shared/dom.js', 'shared/product-search.js', 'shared/icons.js', 'shared/modal.js', 'layout/layout.js',
+    'src/pages/auth/auth.html', 'src/pages/users/users.html', 'src/pages/inventory/inventory.html', 'src/pages/warehouse/warehouse.html', 'src/pages/reports/reports.html'];
+const inventoryAct = await readFile(new URL('../src/pages/inventory/inventory-act.html', import.meta.url), 'utf8');
+const managerPicker = await readFile(new URL('../src/shared/manager-picker.html', import.meta.url), 'utf8');
+const pickerIds = ['order-form-responsible', 'order-complete-person', 'receiving-responsible', 'inventory-responsible', 'inventory-commission-toggle'];
+const html = (await Promise.all(templateFiles.map((file) => readFile(new URL(`../${file}`, import.meta.url), 'utf8'))))
+    .join('\n') + inventoryAct + inventoryAct.replaceAll('inventory-report-', 'reports-act-')
+    + pickerIds.map((id) => managerPicker.replaceAll('manager-picker', id)).join('\n');
+const moduleFiles = ['shared/warehouse-grid.js', 'shared/api.js', 'shared/dom.js', 'shared/manager-picker.js', 'shared/product-search.js', 'shared/icons.js', 'shared/modal.js', 'layout/layout.js',
     'pages/home/home.js', 'pages/warehouse/warehouse.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'pages/receiving/receiving.js', 'pages/orders/orders.js', 'pages/order-form/order-form.js',
-    'pages/auth/auth.js', 'pages/users/users.js', 'pages/inventory/inventory-data.js', 'pages/inventory/product-search.js', 'pages/inventory/inventory-report.js', 'pages/inventory/inventory.js', 'app/router.js', 'main.js'];
+    'pages/auth/auth.js', 'pages/users/users.js', 'pages/inventory/inventory-data.js', 'pages/inventory/product-search.js', 'pages/inventory/inventory-report.js', 'pages/inventory/inventory.js', 'pages/reports/reports.js', 'app/router.js', 'main.js'];
 const scripts = [];
 for (const file of moduleFiles) {
     const url = new URL(`../src/${file}`, import.meta.url);
@@ -22,13 +27,14 @@ for (const file of moduleFiles) {
 }
 const main = scripts.join('\n');
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+const defaultManagers = [{ id: 1, name: 'Иванов' }, { id: 2, name: 'Петрова А.С.' }];
 const product = (count = 10) => ({ id: 1, name: 'Молоко', count });
 const receipt = (count = 10, status = 'pending') => ({
     id: 'test-order', number: 'П-TESTORDE', product: product(count), quantity: 3, responsibleId: 1, responsible: 'Иванов', location: 'Стеллаж 1', status, items: [{ product: product(count), quantity: 3, location: 'Стеллаж 1' }],
 });
 const order = (status = 'pending', changes = {}) => ({
     id: 'test-order', number: 'П-TESTORDE', type: 'receiving', status, createdAt: '2026-10-14T10:42:00+03:00', shipmentDate: null,
-    responsible: 'Иванов', location: 'Стеллаж 1', items: [{ productId: 1, name: 'Молоко', quantity: 3 }], ...changes,
+    responsible: 'Иванов', responsibleIds: [1], location: 'Стеллаж 1', items: [{ productId: 1, name: 'Молоко', quantity: 3 }], ...changes,
 });
 const rowText = (row) => row.children.map((cell) => cell.children[0]?.textContent ?? cell.textContent);
 const stock = (id = 1, name = 'Молоко', count = 10, reserved = 0) => ({ id, name, count, reserved, free: count - reserved });
@@ -80,6 +86,7 @@ class Element {
     prepend(...children) { this.children.unshift(...children); }
     replaceChildren(...children) { this.children = children; }
     contains(element) { return this === element || this.children.some((child) => child.contains(element)); }
+    get firstElementChild() { return this.children[0]; }
     focus() { this.focused = true; }
     closest(selector) {
         if (selector === 'button[data-product-id]' && this.dataset.productId !== undefined) return this;
@@ -108,7 +115,7 @@ async function app(service = {}, hash = '#products', role = 'Менеджер', 
         GetWarehouseStocks: async () => [{ ...product(), productId: 1, x: 1, y: 1, storageLocation: 'X1 Y1' }],
         GetProductLocations: async () => [{ ...product(), productId: 1, x: 1, y: 1, storageLocation: 'X1 Y1' }],
         SearchProductsPage: async () => ({ products: [product()], hasMore: false }),
-        GetManagers: async () => [{ id: 1, name: 'Иванов' }, { id: 2, name: 'Петрова А.С.' }],
+        GetManagers: async () => defaultManagers,
         GetAllProducts: async () => [product()],
         CreateReceiving: async () => receipt(), GetReceiving: async () => receipt(),
         CompleteReceiving: async () => receipt(13, 'completed'), CancelReceiving: async () => {},
@@ -120,7 +127,7 @@ async function app(service = {}, hash = '#products', role = 'Менеджер', 
     }, AdminService: { GetUsers: async () => [] }, InventoryService: {
         GetDraftInventory: async () => null,
         GetInventories: async () => [],
-        GetInventoryEmployees: async () => [],
+        GetInventoryEmployees: async () => defaultManagers,
         CreateInventory: async () => ({ id: 1 }),
         GetInventory: async () => inventoryDraft(),
         ...inventoryService,
@@ -135,17 +142,17 @@ async function app(service = {}, hash = '#products', role = 'Менеджер', 
         },
     };
     elements['receiving-form'].reset = () => {
-        for (const id of ['receiving-product-search', 'receiving-responsible']) elements[id].value = '';
+        elements['receiving-product-search'].value = '';
         elements['receiving-placement'].value = 'auto';
     };
     elements['order-form'].reset = () => {
-        for (const id of ['order-form-date', 'order-form-responsible', 'order-form-address', 'order-form-note']) elements[id].value = '';
+        for (const id of ['order-form-date', 'order-form-address', 'order-form-note']) elements[id].value = '';
     };
     elements['receiving-placement'].value = 'auto';
-    const navLinks = ['#home', '#products', '#orders', '#warehouse'].map((hash) => Object.assign(new Element(), { hash }));
+    const navLinks = ['#home', '#products', '#orders', '#warehouse', '#reports'].map((hash) => Object.assign(new Element(), { hash }));
     const context = vm.createContext({
         window, location, Event, confirm: () => true,
-        sessionStorage: { getItem: () => JSON.stringify({ role, firstName: 'Иван', lastName: 'Иванов' }) },
+        sessionStorage: { getItem: () => JSON.stringify({ id: role === 'Менеджер' ? 1 : 3, role, firstName: 'Иван', lastName: 'Иванов' }) },
         bootstrap: { Modal: { getOrCreateInstance: (element) => ({
             show() { element.modalOpen = true; }, hide() { element.modalOpen = false; },
         }) } },
@@ -162,9 +169,18 @@ async function app(service = {}, hash = '#products', role = 'Менеджер', 
     return {
         elements, navLinks, location, document: context.document,
         async navigate(hash) { currentHash = hash; await window.fire('hashchange'); },
+        async selectManagers(picker, ...ids) {
+            const options = elements[`${picker}-options`];
+            for (const label of options.children) {
+                const input = label.firstElementChild;
+                input.checked = ids.includes(Number(input.value));
+            }
+            for (const id of ids) assert.ok(options.children.some((label) => Number(label.firstElementChild.value) === id));
+            await options.fire('change');
+        },
         async fillOrderForm(productId = '1') {
             elements['order-form-date'].value = '2026-11-20';
-            elements['order-form-responsible'].value = ' Петрова А.С. ';
+            await this.selectManagers('order-form-responsible', 1, 2);
             elements['order-form-address'].value = ' ул. Складская, 14 ';
             elements['order-form-note'].value = ' До 12:00 ';
             elements['order-form-product'].value = productId;
@@ -183,7 +199,7 @@ async function app(service = {}, hash = '#products', role = 'Менеджер', 
         },
         async draft() {
             await this.navigate('#orders/receiving');
-            elements['receiving-responsible'].value = '1';
+            await this.selectManagers('receiving-responsible', 1);
             await this.addReceiving();
             await elements['receiving-form'].fire('submit');
         },
@@ -191,7 +207,7 @@ async function app(service = {}, hash = '#products', role = 'Менеджер', 
 }
 
 function inventoryDraft(items = []) {
-    return { id: 1, status: 'draft', createdAt: '2026-11-07 10:00:00', date: '', responsible: '', commission: '', kind: 'partial', items };
+    return { id: 1, status: 'draft', createdAt: '2026-11-07 10:00:00', date: '', responsible: '', responsibleManagers: [], commission: '', kind: 'partial', items };
 }
 
 test('Кладовщик остаётся в инвентаризации и видит только её меню', async () => {
@@ -320,6 +336,8 @@ test('Выбор товара безопасен, подсчёт начинае�
                 calls++;
                 assert.equal(id, 1);
                 assert.deepEqual(Array.from(request.stockIds), [1]);
+                assert.deepEqual(Array.from(request.responsibleIds), [1, 2]);
+                assert.equal(request.commission, 'Петрова А.С.');
                 await pending.promise;
                 items = [{ productId: 1, productName: unsafe, systemCount: 10, actualCount: null, difference: null, comment: '' }];
                 return { ...inventoryDraft(items), ...request };
@@ -336,6 +354,10 @@ test('Выбор товара безопасен, подсчёт начинае�
     assert.equal(ui.elements['inventory-selection-body'].children[0].children[3].textContent, 'A-01-01-1');
     assert.equal(ui.elements['inventory-selected-count'].textContent, 'Выбрано позиций: 1');
     assert.equal(calls, 0);
+    await ui.elements['inventory-start-count'].fire('click');
+    assert.match(ui.elements['inventory-status'].textContent, /ответственных менеджеров/);
+    await ui.selectManagers('inventory-responsible', 1, 2);
+    await ui.selectManagers('inventory-commission-toggle', 2);
     const started = ui.elements['inventory-start-count'].fire('click');
     await ui.elements['inventory-start-count'].fire('click');
     assert.equal(calls, 1);
@@ -363,6 +385,8 @@ test('Подсчёт сохраняется без корректировки, �
     const ui = await app({}, '#inventory', 'Кладовщик', {
         GetInventories: async () => [details],
         GetInventory: async () => details,
+        GetInventoryReport: async () => details,
+        GenerateInventoryReport: async (id) => { assert.equal(id, details.id); return details; },
         SaveInventoryCounts: async (id, counts) => {
             assert.equal(id, 1); saves++;
             details = { ...details, items: details.items.map((item, index) => ({ ...item, ...counts[index], difference: counts[index].actualCount - item.systemCount })) };
@@ -388,6 +412,9 @@ test('Подсчёт сохраняется без корректировки, �
     ui.elements['inventory-comparison-body'].children[0].children[3].children[0].value = '6';
     await ui.elements['inventory-comparison-body'].fire('change');
     assert.equal(ui.elements['inventory-summary-shortage'].textContent, '-4 шт.');
+    await ui.elements['inventory-open-report'].fire('click');
+    assert.equal(ui.elements['inventory-report-status'].textContent, 'Черновик акта');
+    await ui.elements['inventory-back-to-compare'].fire('click');
     await ui.elements['btn-apply-inventory'].fire('click');
     assert.equal(ui.elements['inventory-correction-modal'].modalOpen, true);
     assert.equal(ui.elements['inventory-correction-body'].children.length, 2);
@@ -407,7 +434,7 @@ test('Подсчёт сохраняется без корректировки, �
 test('Сохранённый акт открывается из истории после нового запуска интерфейса', async () => {
     const details = { ...inventoryDraft([{ productId: 1, productName: '<Товар>', article: 'ART-1', storageLocation: 'A-01-01-1', systemCount: 10, actualCount: 9, difference: -1, comment: 'Брак' }]), date: '2026-11-07', responsible: 'Иванов', status: 'completed' };
     const ui = await app({}, '#inventory', 'Кладовщик', {
-        GetInventories: async () => [details], GetInventory: async () => details,
+        GetInventories: async () => [details], GetInventory: async () => details, GetInventoryReport: async () => details,
     });
     const button = ui.elements['inventory-history-body'].children[0].children[4].children[0];
     await ui.elements['inventory-history-body'].fire('click', { target: button });
@@ -416,6 +443,29 @@ test('Сохранённый акт открывается из истории �
     assert.equal(ui.elements['inventory-report-body'].children[0].children[2].textContent, 'ART-1');
     assert.equal(ui.elements['inventory-report-body'].children[0].children[3].textContent, 'A-01-01-1');
     assert.match(ui.elements['inventory-report-result'].textContent, /07.11.2026/);
+});
+
+test('Менеджер открывает сохранённый акт во вкладке отчётов', async () => {
+    const details = { ...inventoryDraft([{ productId: 1, productName: '<Товар>', systemCount: 10, actualCount: 9 }]),
+        status: 'completed', date: '2026-11-07', responsible: 'Иванов, Петрова А.С.', responsibleManagers: defaultManagers };
+    const ui = await app({}, '#reports', 'Менеджер', {
+        GetInventoryReports: async () => [details],
+        GetInventoryReport: async (id) => { assert.equal(id, details.id); return details; },
+    });
+    assert.equal(ui.elements['nav-analytics'].classList.contains('d-none'), false);
+    assert.equal(ui.navLinks.find((link) => link.hash === '#reports')['aria-current'], 'page');
+    const row = ui.elements['reports-body'].children[0];
+    const link = row.children[0].children[0];
+    assert.equal(link.textContent, 'ИНВ-2026-0001');
+    assert.equal(row.children[1].textContent, '07.11.2026');
+    await ui.navigate(link.href);
+    assert.equal(ui.elements['reports-list'].hidden, true);
+    assert.equal(ui.elements['reports-act'].hidden, false);
+    assert.equal(ui.elements['reports-act-body'].children[0].children[1].textContent, '<Товар>');
+    assert.deepEqual(ui.elements['reports-act-signatures'].children.map((line) => line.textContent.split(' · ')[0]), ['Иванов', 'Петрова А.С.']);
+    assert.equal(ui.elements['inventory-page'].hidden, true);
+    await ui.navigate('#reports');
+    assert.equal(ui.elements['reports-list'].hidden, false);
 });
 
 test('Поиск игнорирует запоздалые ответы и безопасно выводит названия', async () => {
@@ -550,15 +600,15 @@ test('Приёмка проверяет обязательные поля, от�
         CancelReceiving: async (id) => { assert.equal(id, 'test-order'); cancels++; },
     }, '#receiving');
     for (const quantity of ['', '0', '-1', '1.5', '1e2', '9007199254740992']) {
-        ui.elements['receiving-responsible'].value = '1';
+        await ui.selectManagers('receiving-responsible', 1);
         await ui.addReceiving(1, quantity);
         await ui.elements['receiving-form'].fire('submit');
         assert.match(ui.elements['receiving-status'].textContent, /Количество/);
     }
     await ui.addReceiving(1, '3');
-    ui.elements['receiving-responsible'].value = ' ';
+    await ui.selectManagers('receiving-responsible');
     await ui.elements['receiving-form'].fire('submit');
-    assert.match(ui.elements['receiving-status'].textContent, /менеджера/);
+    assert.match(ui.elements['receiving-status'].textContent, /менеджеров/);
     assert.equal(creates, 0);
     await ui.draft();
     assert.equal(creates, 1);
@@ -795,7 +845,7 @@ test('Выбор заказа открывает состав, не пересо
     assert.equal(ui.elements['order-details'].hidden, false);
     assert.equal(ui.elements['order-title'].textContent, 'Заказ П-TESTORDE');
     assert.deepEqual(ui.elements['order-summary'].children.map((child) => child.textContent),
-        ['Тип', 'Приёмка товара', 'Дата создания', rowText(rows[0])[2], 'Дата отгрузки', '—', 'Ответственный', 'Иванов', 'Место хранения', 'Стеллаж 1']);
+        ['Тип', 'Приёмка товара', 'Дата создания', rowText(rows[0])[2], 'Дата отгрузки', '—', 'Ответственные', 'Иванов', 'Место хранения', 'Стеллаж 1']);
     const item = ui.elements['order-items'].children[0];
     assert.equal(item.children[0].children[0].textContent, 'Молоко');
     assert.equal(item.children[0].children[0].href, '#product/1');
@@ -996,8 +1046,9 @@ test('Форма заказа подставляет сегодняшнюю да
     assert.equal(ui.elements['page-title'].textContent, 'Заказы');
     assert.equal(ui.navLinks[2]['aria-current'], 'page');
     assert.equal(ui.elements['order-form-items-empty'].hidden, false);
+    assert.equal(ui.elements['order-form-responsible-options'].children[0].children[1].textContent, 'Иванов (вы)');
 
-    ui.elements['order-form-responsible'].value = 'Петрова';
+    await ui.selectManagers('order-form-responsible', 2);
     ui.elements['order-form-address'].value = 'Адрес';
     await ui.elements['order-form'].fire('submit');
     assert.match(ui.elements['order-form-status'].textContent, /хотя бы один товар/);
@@ -1077,7 +1128,7 @@ test('Создание заказа бронирует товар, показы�
     assert.equal(requests.length, 1);
     assert.equal(ui.elements['order-form-fields'].disabled, true);
     assert.deepEqual(JSON.parse(JSON.stringify(requests[0])), {
-        type: 'shipment', date: '2026-11-20', address: 'ул. Складская, 14', responsible: 'Петрова А.С.', note: 'До 12:00',
+        type: 'shipment', date: '2026-11-20', address: 'ул. Складская, 14', responsibleIds: [1, 2], note: 'До 12:00',
         items: [{ productId: 1, quantity: '4' }],
     });
     creation.resolve({ order: shipment(), stock: [stock(1, 'Молоко', 10, 4)] });
@@ -1090,7 +1141,7 @@ test('Создание заказа бронирует товар, показы�
     assert.equal(changeText(row.children[2]), '0 → 4');
     assert.equal(row.children[3].textContent, '10');
     assert.equal(ui.elements['order-form-items'].children.length, 0);
-    assert.equal(ui.elements['order-form-responsible'].value, '');
+    assert.equal(ui.elements['order-form-responsible'].textContent, 'Выберите менеджеров');
     assert.equal(ui.elements['order-form-fields'].disabled, false);
     assert.match(ui.elements['order-form-date'].value, /^\d{4}-/);
 
@@ -1143,7 +1194,7 @@ test('Ошибки загрузки и создания заказа видны,
     assert.match(ui.elements['order-form-status'].textContent, /недостаточно свободного остатка/);
     assert.equal(ui.elements['order-created-modal'].modalOpen, undefined);
     assert.equal(ui.elements['order-form-items'].children.length, 1);
-    assert.equal(ui.elements['order-form-responsible'].value, ' Петрова А.С. ');
+    assert.equal(ui.elements['order-form-responsible'].textContent, 'Иванов, Петрова А.С.');
     assert.equal(ui.elements['order-form-fields'].disabled, false);
 });
 
@@ -1161,7 +1212,7 @@ test('Отгрузка показывает изменения и выполня
     assert.deepEqual(ui.elements['order-summary'].children.slice(10).map((child) => child.textContent), ['Примечание', 'До 12:00']);
     await ui.elements['order-complete'].fire('click');
     assert.equal(ui.elements['order-complete-title'].textContent, 'Отгрузить заказ З-2026-0001?');
-    assert.equal(ui.elements['order-complete-person'].value, 'Иванов');
+    assert.equal(ui.elements['order-complete-person'].textContent, 'Иванов');
     assert.match(ui.elements['order-complete-date'].value, /^\d{4}-\d{2}-\d{2}$/);
     assert.equal(ui.elements['order-complete-confirm'].disabled, false);
     const row = ui.elements['order-complete-items'].children[0];
@@ -1169,21 +1220,21 @@ test('Отгрузка показывает изменения и выполня
     assert.equal(changeText(row.children[2]), '4 → 0');
     assert.equal(changeText(row.children[3]), '10 → 6');
 
-    ui.elements['order-complete-person'].value = ' ';
+    await ui.selectManagers('order-complete-person');
     await ui.elements['order-complete-confirm'].fire('click');
     assert.equal(calls.length, 0);
-    assert.match(ui.elements['order-complete-status'].textContent, /ФИО/);
+    assert.match(ui.elements['order-complete-status'].textContent, /ответственных менеджеров/);
 
-    ui.elements['order-complete-person'].value = ' Кузнецов ';
+    await ui.selectManagers('order-complete-person', 1, 2);
     ui.elements['order-complete-date'].value = '2026-11-21';
     ui.elements['order-complete-modal'].modalOpen = true;
     const confirming = ui.elements['order-complete-confirm'].fire('click');
     await ui.elements['order-complete-confirm'].fire('click');
     assert.equal(calls.length, 1);
     assert.equal(calls[0][0], 'З-2026-0001');
-    assert.deepEqual(JSON.parse(JSON.stringify(calls[0][1])), { date: '2026-11-21', completedBy: 'Кузнецов' });
+    assert.deepEqual(JSON.parse(JSON.stringify(calls[0][1])), { date: '2026-11-21', completedByIds: [1, 2] });
     assert.equal(ui.elements['order-complete'].disabled, true);
-    completion.resolve({ order: shipment('shipped', { completedBy: 'Кузнецов' }), stock: [stock(1, 'Молоко', 6)] });
+    completion.resolve({ order: shipment('shipped', { completedBy: 'Иванов, Петрова А.С.' }), stock: [stock(1, 'Молоко', 6)] });
     await confirming;
     assert.equal(ui.elements['order-complete-modal'].modalOpen, false);
     assert.match(ui.elements['orders-status'].textContent, /отгружен. Остаток обновлён/);
@@ -1192,7 +1243,7 @@ test('Отгрузка показывает изменения и выполня
     assert.equal(updated.children[6].children.length, 0);
     assert.equal(ui.elements['order-complete'].hidden, true);
     assert.equal(ui.elements['order-cancel'].hidden, true);
-    assert.ok(ui.elements['order-summary'].children.some((child) => child.textContent === 'Отгрузил'));
+    assert.ok(ui.elements['order-summary'].children.some((child) => child.textContent === 'Ответственные за отгрузку'));
     assert.equal(ui.elements['orders-count-completed'].textContent, '1');
 });
 
@@ -1208,7 +1259,7 @@ test('Списание подписано своими словами', async ()
     assert.ok(ui.elements['order-summary'].children.some((child) => child.textContent === 'Дата списания'));
     await ui.elements['order-complete'].fire('click');
     assert.equal(ui.elements['order-complete-column'].textContent, 'Списание');
-    assert.equal(ui.elements['order-complete-person-label'].textContent, 'Списал');
+    assert.equal(ui.elements['order-complete-person-label'].textContent, 'Ответственные за списание');
     assert.equal(ui.elements['order-complete-confirm'].textContent, 'Списать');
     await ui.elements['order-complete-confirm'].fire('click');
     assert.match(ui.elements['orders-status'].textContent, /списан/);
@@ -1352,14 +1403,14 @@ test('Каталог раскрывает десять позиций, Ещё д
     assert.equal(ui.location.hash, '#product/1');
 });
 
-test('Приёмка отправляет несколько товаров, убирает строки и передаёт ID менеджера', async () => {
+test('Приёмка отправляет несколько товаров и ID выбранных менеджеров', async () => {
     const products = [{ ...product(), storageLocation: 'A-01' }, { id: 2, name: 'Хлеб', count: 5, storageLocation: 'B-02' }];
     let sent;
     const ui = await app({ SearchProductsPage: async () => ({ products, hasMore: false }), CreateReceiving: async (request) => {
         sent = request;
         return { ...receipt(), items: request.items.map((item) => ({ product: products.find((p) => p.id === item.productId), quantity: Number(item.quantity), location: item.location })) };
     } }, '#orders/receiving');
-    ui.elements['receiving-responsible'].value = '1';
+    await ui.selectManagers('receiving-responsible', 1, 2);
     await ui.addReceiving(1, '3', 'A-01');
     await ui.addReceiving(2, '4', 'B-02');
     await ui.addReceiving(2, '4', 'B-02');
@@ -1368,7 +1419,7 @@ test('Приёмка отправляет несколько товаров, у�
     assert.equal(ui.elements['receiving-items'].children.length, 1);
     await ui.addReceiving(2, '4', 'B-02');
     await ui.elements['receiving-form'].fire('submit');
-    assert.equal(sent.responsibleId, 1);
+    assert.deepEqual(Array.from(sent.responsibleIds), [1, 2]);
     assert.equal(sent.items.length, 2);
     assert.equal(sent.items[0].quantity, '3');
     assert.equal(sent.items[1].location, 'Автоматически при подтверждении');
@@ -1431,7 +1482,7 @@ test('Ручное размещение выбирает одну свободн
         SearchProductsPage: async () => ({ products, hasMore: false }),
         CreateReceiving: async (request) => { sent = request; return receipt(); },
     }, '#orders/receiving');
-    ui.elements['receiving-responsible'].value = '1';
+    await ui.selectManagers('receiving-responsible', 1);
     ui.elements['receiving-placement'].value = 'manual';
     await ui.elements['receiving-placement'].fire('change');
     assert.equal(ui.elements['receiving-cell-picker'].hidden, false);
@@ -1467,6 +1518,7 @@ test('Инвентаризация различает одинаковый то�
     await gridButton(ui, 'inventory-grid', 5, 3).fire('click');
     assert.equal(ui.elements['inventory-selected-count'].textContent, 'Выбрано позиций: 2');
     ui.elements['inventory-date'].value = '2026-11-14';
+    await ui.selectManagers('inventory-responsible', 1);
     await ui.elements['inventory-start-count'].fire('click');
     const rows = ui.elements['inventory-items-body'].children;
     rows[0].children[3].children[0].value = '8';

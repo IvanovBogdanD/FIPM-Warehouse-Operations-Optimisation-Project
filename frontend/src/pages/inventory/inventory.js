@@ -3,6 +3,7 @@ import { showModal, hideModal } from '../../shared/modal.js';
 import { initInventoryProductSearch, closeInventorySearch, setInventorySearchMode } from './product-search.js';
 import { callBackend } from '../../shared/api.js';
 import { createWarehouseGrid } from '../../shared/warehouse-grid.js';
+import { createManagerPicker } from '../../shared/manager-picker.js';
 import { inventoryNumber, inventoryDate, inventoryTotals } from './inventory-data.js';
 import { renderInventoryReport, exportInventoryReport } from './inventory-report.js';
 
@@ -14,6 +15,8 @@ let inventoryGrid;
 let inventoryStocks = [];
 let inventoryCellChoice = null;
 let inventoryUsesCells = true;
+let inventoryManagers;
+let inventoryCommission;
 
 function choiceFromInventoryItem(item) {
     return { id: inventoryUsesCells ? item.stockId : item.productId, name: item.productName, count: item.systemCount,
@@ -28,6 +31,8 @@ async function loadInventoryGrid() {
 }
 
 export function initInventory() {
+    inventoryManagers = createManagerPicker('inventory-responsible');
+    inventoryCommission = createManagerPicker('inventory-commission-toggle', 'Выберите сотрудников');
     inventoryGrid = createWarehouseGrid(byId('inventory-grid'), (cell) => {
         inventoryCellChoice = cell;
         for (const stock of cell.items) {
@@ -51,10 +56,7 @@ export function initInventory() {
         inventoryChoices = [];
         inventorySelected.clear();
         
-        const user = JSON.parse(sessionStorage.getItem('user'));
-        const userName = [user.lastName, user.firstName, user.middleName].filter(Boolean).join(' ');
-
-        const created = await window.go.main.InventoryService.CreateInventory(userName);
+        const created = await window.go.main.InventoryService.CreateInventory();
         await openInventory(await window.go.main.InventoryService.GetInventory(created.id));
     }));
 
@@ -91,9 +93,8 @@ export function initInventory() {
         inventoryChoices = inventoryDetails.items.map(choiceFromInventoryItem);
         inventoryChoices.forEach((product) => inventorySelected.add(product.id));
         
-        // Обновляем параметры (дату и комиссию)
         byId('inventory-date').value = inventoryDetails.date || byId('inventory-date').value;
-        await renderCommissionList(inventoryDetails.commission);
+        await loadInventoryPeople(inventoryDetails);
         await loadInventoryGrid();
         
         renderInventorySelection();
@@ -108,7 +109,11 @@ export function initInventory() {
     
     byId('inventory-history-body').addEventListener('click', (event) => {
         const button = event.target.closest('button[data-inventory-id]');
-        if (button) return runInventoryAction('btn-create-inventory', async () => openInventory(await window.go.main.InventoryService.GetInventory(Number(button.dataset.inventoryId))));
+        if (button) return runInventoryAction('btn-create-inventory', async () => {
+            const id = Number(button.dataset.inventoryId);
+            if (button.dataset.inventoryStatus === 'completed') await openCompletedInventory(id);
+            else await openInventory(await window.go.main.InventoryService.GetInventory(id));
+        });
     });
     
     byId('inventory-selection-body').addEventListener('change', (event) => {
@@ -130,7 +135,6 @@ export function initInventory() {
     });
     byId('inventory-clear-selection').addEventListener('click', () => { inventorySelected.clear(); renderInventorySelection(); });
     for (const id of ['inventory-kind-partial', 'inventory-kind-full']) byId(id).addEventListener('change', renderInventorySelection);
-    byId('inventory-commission').addEventListener('change', updateInventoryCommission);
     byId('inventory-start-count').addEventListener('click', () => runInventoryAction('inventory-start-count', startInventoryCount));
     byId('inventory-save-counts').addEventListener('click', () => runInventoryAction('inventory-save-counts', async () => {
         await saveInventoryCounts(false);
@@ -158,16 +162,18 @@ export function initInventory() {
     byId('inventory-comparison-body').addEventListener('change', refreshInventoryComparison);
     byId('inventory-correction-confirm').addEventListener('click', () => runInventoryAction('inventory-correction-confirm', async () => {
         await window.go.main.InventoryService.ApplyInventory(inventoryDetails.id);
-        inventoryDetails = await window.go.main.InventoryService.GetInventory(inventoryDetails.id);
+        inventoryDetails = await window.go.main.InventoryService.GetInventoryReport(inventoryDetails.id);
         hideModal('inventory-correction-modal');
         showInventoryReport();
     }, 'inventory-correction-status'));
     byId('inventory-open-report').addEventListener('click', () => runInventoryAction('inventory-open-report', async () => {
         await saveInventoryCounts(true);
+        inventoryDetails = await window.go.main.InventoryService.GenerateInventoryReport(inventoryDetails.id);
         showInventoryReport();
     }));
-    byId('inventory-download-pdf').addEventListener('click', () => runInventoryAction('inventory-download-pdf', () => exportInventoryReport(inventoryDetails, false)));
-    byId('inventory-print').addEventListener('click', () => runInventoryAction('inventory-print', () => exportInventoryReport(inventoryDetails, true)));
+    for (const [id, print] of [['inventory-download-pdf', false], ['inventory-print', true]]) {
+        byId(id).addEventListener('click', () => runInventoryAction(id, () => exportInventoryReport(inventoryDetails, print, byId('inventory-status'))));
+    }
 }
 
 async function runInventoryAction(buttonId, action, statusId = 'inventory-status') {
@@ -215,12 +221,22 @@ async function showInventoryHistory() {
         button.type = 'button'; button.className = 'btn btn-outline-primary btn-sm';
         button.textContent = inventory.status === 'completed' ? 'Открыть акт' : 'Продолжить';
         button.dataset.inventoryId = inventory.id;
+        button.dataset.inventoryStatus = inventory.status;
         cell.append(button); row.append(cell); body.append(row);
     }
     byId('inventory-history-empty').hidden = inventories.length > 0;
 }
 
+async function openCompletedInventory(id) {
+    inventoryDetails = await window.go.main.InventoryService.GetInventoryReport(id);
+    showInventoryReport();
+}
+
 async function openInventory(details) {
+    if (details.status === 'completed') {
+        await openCompletedInventory(details.id);
+        return;
+    }
     inventoryDetails = details;
     inventoryUsesCells = details.byCells || details.items.length === 0;
     inventoryCellChoice = null;
@@ -230,7 +246,6 @@ async function openInventory(details) {
     inventoryChoices.forEach((product) => inventorySelected.add(product.id));
     byId('inventory-product-search').value = '';
     
-    if (details.status === 'completed') { showInventoryReport(); return; }
     await loadInventoryGrid();
     
     if (details.items.length > 0) {
@@ -244,31 +259,17 @@ async function openInventory(details) {
     byId('inventory-kind-full').checked = details.kind === 'full';
     byId('inventory-kind-partial').checked = details.kind !== 'full';
     
-    await renderCommissionList(details.commission);
+    await loadInventoryPeople(details);
     
     renderInventorySelection();
     showInventoryStage('create');
 }
 
-// НОВАЯ ФУНКЦИЯ: заполняет выпадающий список сотрудников
-async function renderCommissionList(selectedCommission) {
+async function loadInventoryPeople(details) {
     const employees = await window.go.main.InventoryService.GetInventoryEmployees();
-    const commission = byId('inventory-commission');
-    commission.replaceChildren();
-    for (const employee of employees) {
-        const label = document.createElement('label'); 
-        label.className = 'dropdown-item d-flex gap-2 text-wrap';
-        const input = document.createElement('input'); 
-        input.type = 'checkbox'; 
-        input.className = 'form-check-input flex-shrink-0'; 
-        input.value = employee.name;
-        input.checked = (selectedCommission || '').split(', ').includes(employee.name);
-        const name = document.createElement('span'); 
-        name.textContent = employee.name;
-        label.append(input, name); 
-        commission.append(label);
-    }
-    updateInventoryCommission();
+    inventoryManagers.render(employees, details.responsibleManagers.map((manager) => manager.id));
+    const existingCommission = details.commission.split(', ');
+    inventoryCommission.render(employees, employees.filter((employee) => existingCommission.includes(employee.name)).map((employee) => employee.id));
 }
 
 function showInventoryStage(stage) {
@@ -334,28 +335,17 @@ function renderInventorySelection() {
     if (inventoryUsesCells) inventoryGrid.render(inventoryStocks, inventoryCellChoice, full);
 }
 
-function selectedInventoryCommission() {
-    return Array.from(byId('inventory-commission').children).map((label) => label.children[0]).filter((input) => input.checked).map((input) => input.value);
-}
-
-function updateInventoryCommission() {
-    const names = selectedInventoryCommission();
-    byId('inventory-commission-toggle').textContent = names.length ? names.join(', ') : 'Выберите сотрудников';
-}
-
 async function startInventoryCount() {
-    const user = JSON.parse(sessionStorage.getItem('user'));
-    const userName = [user.lastName, user.firstName, user.middleName].filter(Boolean).join(' ');
-
     const request = {
         date: byId('inventory-date').value, 
-        responsible: userName,
-        commission: selectedInventoryCommission().join(', '),
+        responsibleIds: inventoryManagers.ids(),
+        commission: inventoryCommission.names().join(', '),
         kind: byId('inventory-kind-full').checked ? 'full' : 'partial', 
         ...(inventoryUsesCells ? { byCells: true, stockIds: Array.from(inventorySelected) } : { productIds: Array.from(inventorySelected) }),
     };
     
     if (!request.date) throw new Error('Укажите дату проведения.');
+    if (!request.responsibleIds.length) throw new Error('Выберите ответственных менеджеров.');
     if (request.kind === 'partial' && inventorySelected.size === 0) throw new Error('Выберите товары для проверки.');
     
     inventoryDetails = await window.go.main.InventoryService.PrepareInventory(inventoryDetails.id, request);
@@ -473,7 +463,7 @@ function showInventoryCorrection() {
 }
 
 function showInventoryReport() {
-    renderInventoryReport(inventoryDetails);
+    renderInventoryReport(inventoryDetails, 'inventory-report');
     byId('inventory-back-to-compare').hidden = inventoryDetails.status === 'completed';
     showInventoryStage('report');
 }

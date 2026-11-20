@@ -40,7 +40,7 @@
       <section class="card shadow-none border mb-0">
         <div class="table-responsive">
           <table class="table table-hover align-middle mb-0">
-            <thead class="table-light"><tr><th scope="col">№ заказа</th><th scope="col">Статус</th><th scope="col">Создан</th><th scope="col">Отгрузка</th><th scope="col">Ответственный</th><th scope="col">Поз.</th><th scope="col"><span class="visually-hidden">Действия</span></th></tr></thead>
+            <thead class="table-light"><tr><th scope="col">№ заказа</th><th scope="col">Статус</th><th scope="col">Создан</th><th scope="col">Отгрузка</th><th scope="col">Ответственные</th><th scope="col">Поз.</th><th scope="col"><span class="visually-hidden">Действия</span></th></tr></thead>
             <tbody id="orders-body"></tbody>
           </table>
         </div>
@@ -110,7 +110,7 @@
           </div>
           <div class="col-md-6">
             <label id="order-complete-person-label" class="form-label fw-semibold" for="order-complete-person"></label>
-            <input id="order-complete-person" class="form-control" type="text">
+            {{order-complete-person}}
           </div>
         </div>
         <p id="order-complete-status" class="mt-3 mb-0" role="status" aria-live="polite"></p>

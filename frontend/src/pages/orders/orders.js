@@ -1,6 +1,7 @@
 import { callBackend } from '../../shared/api.js';
 import { byId, showError, showStatus } from '../../shared/dom.js';
 import { hideModal } from '../../shared/modal.js';
+import { createManagerPicker } from '../../shared/manager-picker.js';
 import { forgetReceiving } from '../receiving/receiving.js';
 
 const ORDER_STATUSES = {
@@ -20,11 +21,11 @@ const ORDER_TAB_STATUSES = {
 const ORDER_TABS = ['all', ...Object.keys(ORDER_TAB_STATUSES)];
 const ORDER_COMPLETIONS = {
     shipment: {
-        action: 'Отгрузить', column: 'Отгрузка', date: 'Фактическая дата отгрузки', person: 'Отгрузил', done: 'отгружен',
+        action: 'Отгрузить', column: 'Отгрузка', date: 'Фактическая дата отгрузки', person: 'Ответственные за отгрузку', done: 'отгружен',
         text: 'Товар будет списан со склада и убран из брони. Действие нельзя отменить.',
     },
     writeoff: {
-        action: 'Списать', column: 'Списание', date: 'Фактическая дата списания', person: 'Списал', done: 'списан',
+        action: 'Списать', column: 'Списание', date: 'Фактическая дата списания', person: 'Ответственные за списание', done: 'списан',
         text: 'Товар будет списан со склада и убран из брони. Действие нельзя отменить.',
     },
 };
@@ -38,6 +39,7 @@ let selectedOrderId = null;
 let orderToCancel = null;
 let orderToComplete = null;
 let orderCompleteRequest = 0;
+let orderCompleteManagers;
 
 function formatOrderDate(value) {
     if (!value) return '—';
@@ -151,7 +153,7 @@ function renderOrderDetails() {
     for (const [label, value] of [
         ['Тип', ORDER_TYPES[order.type] ?? order.type], ['Дата создания', formatOrderDate(order.createdAt)],
         [order.type === 'writeoff' ? 'Дата списания' : 'Дата отгрузки', formatOrderDay(order.shipmentDate)],
-        ['Ответственный', order.responsible], ['Место хранения', order.location], ['Адрес', order.address],
+        ['Ответственные', order.responsible], ['Место хранения', order.location], ['Адрес', order.address],
         [ORDER_COMPLETIONS[order.type]?.person, order.completedBy], ['Примечание', order.note],
     ]) {
         if (!value) continue;
@@ -284,19 +286,20 @@ async function askOrderComplete() {
     byId('order-complete-date-label').textContent = completion.date;
     byId('order-complete-person-label').textContent = completion.person;
     byId('order-complete-date').value = todayForInput();
-    byId('order-complete-person').value = order.responsible;
+    orderCompleteManagers.render([]);
     byId('order-complete-confirm').textContent = completion.action;
     byId('order-complete-confirm').disabled = true;
     byId('order-complete-items').replaceChildren();
-    showStatus(byId('order-complete-status'), 'Загрузка остатков…');
+    showStatus(byId('order-complete-status'), 'Загрузка остатков и менеджеров…');
     try {
-        const stocks = await callBackend('GetProductStocks');
+        const [stocks, managers] = await Promise.all([callBackend('GetProductStocks'), callBackend('GetManagers')]);
         if (request !== orderCompleteRequest) return;
         byId('order-complete-items').replaceChildren(...order.items.map((item) => {
             return createCompletionRow(item, stocks.find((stock) => stock.id === item.productId));
         }));
-        byId('order-complete-confirm').disabled = false;
-        showStatus(byId('order-complete-status'), '');
+        orderCompleteManagers.render(managers, order.responsibleIds);
+        byId('order-complete-confirm').disabled = managers.length === 0;
+        showStatus(byId('order-complete-status'), managers.length ? '' : 'Нет одобренных менеджеров.');
     } catch (error) {
         if (request === orderCompleteRequest) showError(byId('order-complete-status'), error);
     }
@@ -306,10 +309,10 @@ async function confirmOrderComplete() {
     if (ordersBusy || !orderToComplete) return;
     const request = {
         date: byId('order-complete-date').value,
-        completedBy: byId('order-complete-person').value.trim(),
+        completedByIds: orderCompleteManagers.ids(),
     };
-    if (!request.date || !request.completedBy) {
-        showError(byId('order-complete-status'), new Error('Укажите дату и ФИО сотрудника.'));
+    if (!request.date || !request.completedByIds.length) {
+        showError(byId('order-complete-status'), new Error('Укажите дату и выберите ответственных менеджеров.'));
         return;
     }
     const id = orderToComplete.id;
@@ -334,6 +337,7 @@ async function confirmOrderComplete() {
 }
 
 export function initOrders() {
+    orderCompleteManagers = createManagerPicker('order-complete-person');
     byId('orders-reload').addEventListener('click', loadOrders);
     byId('orders-search').addEventListener('input', renderOrders);
     byId('order-cancel-confirm').addEventListener('click', confirmOrderCancel);

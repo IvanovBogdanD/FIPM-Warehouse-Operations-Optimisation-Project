@@ -106,11 +106,11 @@ func TestProductMetadataSurvivesReceivingAndInventory(t *testing.T) {
 	if err := i.InitSchema(); err != nil {
 		t.Fatal(err)
 	}
-	draft, err := i.CreateInventory("Test User")
+	draft, err := i.CreateInventory()
 	if err != nil {
 		t.Fatal(err)
 	}
-	details, err := i.PrepareInventory(draft.ID, InventoryParameters{Date: "2026-11-07", Responsible: "Иванов И.И.", Kind: "partial", ProductIDs: []int{1}})
+	details, err := i.PrepareInventory(draft.ID, InventoryParameters{Date: "2026-11-07", ResponsibleIDs: []int{1}, Kind: "partial", ProductIDs: []int{1}})
 	if err != nil || len(details.Items) != 1 {
 		t.Fatalf("inventory=%+v error=%v", details, err)
 	}
