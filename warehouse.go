@@ -293,3 +293,192 @@ func setLegacyWarehouseCount(tx *sql.Tx, productID, actual int) error {
 	_, err = tx.Exec("INSERT INTO warehouse_stock(product_id,x,y,quantity,received_at) VALUES(?,?,?,?,?)", productID, x, y, actual, time.Now().UTC().Format(warehouseTimeLayout))
 	return err
 }
+
+// MoveWarehouseStock перемещает часть или весь остаток одного товара между ячейками.
+// Общий остаток товара не меняется.
+func (s *DBService) MoveWarehouseStock(stockID, quantity, destinationX, destinationY int) error {
+	if stockID <= 0 || quantity <= 0 {
+		return errors.New("выберите товар и положительное количество для перемещения")
+	}
+	if err := validateWarehouseCell(destinationX, destinationY); err != nil {
+		return err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var productID, sourceX, sourceY, current int
+	var receivedAt string
+	if err := tx.QueryRow("SELECT product_id,x,y,quantity,received_at FROM warehouse_stock WHERE id=?", stockID).
+		Scan(&productID, &sourceX, &sourceY, &current, &receivedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("товар в исходной ячейке уже изменился, обновите склад")
+		}
+		return err
+	}
+	if quantity > current {
+		return errors.New("нельзя переместить больше товара, чем находится в ячейке")
+	}
+	if sourceX == destinationX && sourceY == destinationY {
+		return errors.New("исходная и целевая ячейки совпадают")
+	}
+
+	var destinationID, destinationCount int
+	err = tx.QueryRow("SELECT id,quantity FROM warehouse_stock WHERE product_id=? AND x=? AND y=?",
+		productID, destinationX, destinationY).Scan(&destinationID, &destinationCount)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		_, err = tx.Exec("INSERT INTO warehouse_stock(product_id,x,y,quantity,received_at) VALUES(?,?,?,?,?)",
+			productID, destinationX, destinationY, quantity, receivedAt)
+	} else {
+		if int64(destinationCount) > maxSafeCount-int64(quantity) {
+			return errors.New("количество в целевой ячейке превышает допустимый предел")
+		}
+		_, err = tx.Exec("UPDATE warehouse_stock SET quantity=quantity+? WHERE id=?", quantity, destinationID)
+	}
+	if err != nil {
+		return err
+	}
+	if quantity == current {
+		_, err = tx.Exec("DELETE FROM warehouse_stock WHERE id=?", stockID)
+	} else {
+		_, err = tx.Exec("UPDATE warehouse_stock SET quantity=quantity-? WHERE id=?", quantity, stockID)
+	}
+	if err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// WarehouseCell задаёт координаты ячейки для пакетного объединения.
+type WarehouseCell struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
+// MergeWarehouseCells переносит все товары из исходных ячеек в целевую.
+// Целевая ячейка может совпадать с одной из исходных или быть любой другой.
+func (s *DBService) MergeWarehouseCells(sources []WarehouseCell, destinationX, destinationY int) error {
+	if len(sources) < 2 || len(sources) > 4 {
+		return errors.New("для объединения выберите от 2 до 4 исходных ячеек")
+	}
+	if err := validateWarehouseCell(destinationX, destinationY); err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	for _, cell := range sources {
+		if err := validateWarehouseCell(cell.X, cell.Y); err != nil {
+			return err
+		}
+		key := fmt.Sprintf("%d:%d", cell.X, cell.Y)
+		if seen[key] {
+			return errors.New("исходная ячейка указана повторно")
+		}
+		seen[key] = true
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, cell := range sources {
+		var count int
+		if err := tx.QueryRow("SELECT count(*) FROM warehouse_stock WHERE x=? AND y=?", cell.X, cell.Y).Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			return fmt.Errorf("ячейка %s уже пуста, обновите выбор", warehouseLocation(cell.X, cell.Y))
+		}
+	}
+
+	type stockRow struct {
+		id, productID, quantity, x, y int
+		receivedAt                    string
+	}
+	rows, err := tx.Query("SELECT id,product_id,quantity,x,y,received_at FROM warehouse_stock WHERE ("+
+		joinCellConditions(len(sources))+")", cellArgs(sources)...)
+	if err != nil {
+		return err
+	}
+	all := []stockRow{}
+	for rows.Next() {
+		var item stockRow
+		if err := rows.Scan(&item.id, &item.productID, &item.quantity, &item.x, &item.y, &item.receivedAt); err != nil {
+			rows.Close()
+			return err
+		}
+		all = append(all, item)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if len(all) == 0 {
+		return errors.New("выбранные ячейки уже пусты, обновите склад")
+	}
+
+	products := map[int]bool{}
+	for _, item := range all {
+		if item.x == destinationX && item.y == destinationY {
+			continue
+		}
+		var id, count int
+		err := tx.QueryRow("SELECT id,quantity FROM warehouse_stock WHERE product_id=? AND x=? AND y=?",
+			item.productID, destinationX, destinationY).Scan(&id, &count)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			_, err = tx.Exec("INSERT INTO warehouse_stock(product_id,x,y,quantity,received_at) VALUES(?,?,?,?,?)",
+				item.productID, destinationX, destinationY, item.quantity, item.receivedAt)
+		} else {
+			if int64(count) > maxSafeCount-int64(item.quantity) {
+				return errors.New("количество товара в целевой ячейке превышает допустимый предел")
+			}
+			_, err = tx.Exec("UPDATE warehouse_stock SET quantity=quantity+? WHERE id=?", item.quantity, id)
+		}
+		if err != nil {
+			return err
+		}
+		products[item.productID] = true
+	}
+	// Удаляем только исходные координаты; целевая ячейка сохранится с суммарным содержимым.
+	for _, cell := range sources {
+		if cell.X == destinationX && cell.Y == destinationY {
+			continue
+		}
+		if _, err := tx.Exec("DELETE FROM warehouse_stock WHERE x=? AND y=?", cell.X, cell.Y); err != nil {
+			return err
+		}
+	}
+	for productID := range products {
+		if err := syncWarehouseProduct(tx, productID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func joinCellConditions(count int) string {
+	parts := make([]string, count)
+	for i := range parts {
+		parts[i] = "(x=? AND y=?)"
+	}
+	return strings.Join(parts, " OR ")
+}
+func cellArgs(cells []WarehouseCell) []any {
+	args := make([]any, 0, len(cells)*2)
+	for _, cell := range cells {
+		args = append(args, cell.X, cell.Y)
+	}
+	return args
+}

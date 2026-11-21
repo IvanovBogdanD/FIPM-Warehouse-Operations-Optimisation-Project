@@ -11,6 +11,7 @@ import inventoryHtml from '../pages/inventory/inventory.html?raw';
 import inventoryActHtml from '../pages/inventory/inventory-act.html?raw';
 import reportsHtml from '../pages/reports/reports.html?raw';
 import warehouseHtml from '../pages/warehouse/warehouse.html?raw';
+import movementsHtml from '../pages/warehouse/movements.html?raw';
 import managerPickerHtml from '../shared/manager-picker.html?raw';
 import { byId } from '../shared/dom.js';
 import { withIcons } from '../shared/icons.js';
@@ -24,7 +25,7 @@ export function mountLayout() {
     const inventoryForm = withManagerPicker(inventoryHtml, 'inventory-responsible');
     
     byId('page-content').insertAdjacentHTML('beforeend', withIcons(
-        homeHtml + catalogHtml + productHtml + usersHtml + warehouseHtml
+        homeHtml + catalogHtml + productHtml + usersHtml + warehouseHtml + movementsHtml
         + withManagerPicker(ordersHtml, 'order-complete-person')
         + withManagerPicker(orderFormHtml, 'order-form-responsible')
         + withManagerPicker(receivingHtml, 'receiving-responsible')

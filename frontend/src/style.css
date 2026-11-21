@@ -1,1 +1,52 @@
 @import './shared/styles.css';
+
+/* Компактная карта для страницы перемещений: все 64 ячейки видны без горизонтальной прокрутки. */
+.warehouse-grid-wrap { width: 100%; overflow: visible; }
+.warehouse-grid-wrap table { width: 100%; table-layout: fixed; }
+.warehouse-grid-wrap th, .warehouse-grid-wrap td { padding: .2rem !important; font-size: .8rem; }
+.warehouse-grid-wrap .ratio { min-width: 0; }
+.warehouse-grid-wrap button { min-width: 0; font-size: clamp(.65rem, 1.2vw, .85rem); }
+.warehouse-grid-wrap button .small { font-size: clamp(.55rem, 1vw, .72rem); }
+
+/* Карта перемещений использует те же компактные размеры ячеек, что и карта склада. */
+#movements-grid { width: 100%; overflow: visible; }
+#movements-grid table { width: 100%; table-layout: fixed; }
+#movements-grid th, #movements-grid td { padding: .2rem !important; font-size: .8rem; }
+#movements-grid .ratio { min-width: 0; }
+#movements-grid button { min-width: 0; font-size: clamp(.65rem, 1.2vw, .85rem); }
+#movements-grid button .small { font-size: clamp(.55rem, 1vw, .72rem); }
+#movements-details-card.movements-operation-card { margin-top: 9rem; }
+@media (max-width: 1199.98px) { #movements-details-card.movements-operation-card { margin-top: 0; } }
+
+
+/* При нескольких позициях показываем содержимое ячейки поверх панели действий,
+   чтобы высота списка не сдвигала кнопки перемещения и объединения. */
+#movements-details-card .card-body { position: relative; }
+#movements-cell-items.movements-items-popover {
+    position: absolute;
+    top: .5rem;
+    left: .75rem;
+    right: .75rem;
+    z-index: 6;
+    max-height: min(26rem, 70vh);
+    overflow-y: auto;
+    padding: .35rem .5rem .5rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: .75rem;
+    background: var(--bs-body-bg);
+    box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .16);
+}
+#movements-cell-items.movements-items-popover .list-group-item {
+    border-left: 0;
+    border-right: 0;
+}
+
+/* Ссылка на полный список не влияет на вертикальное положение панели операций. */
+#movements-cell-items .movements-show-all-link {
+    text-decoration: none;
+    cursor: pointer;
+}
+#movements-cell-items .movements-show-all-link:hover,
+#movements-cell-items .movements-show-all-link:focus-visible {
+    text-decoration: underline;
+}

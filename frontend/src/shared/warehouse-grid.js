@@ -39,14 +39,17 @@ export function createWarehouseGrid(container, onSelect, onlyEmpty = false) {
     }
     table.append(caption, head, body); container.replaceChildren(table);
     return {
-        render(items, selected = null, disabled = false) {
+        render(items, selected = null, disabled = false, highlighted = null, highlightVariant = 'success', destination = null, occupiedOnly = false) {
             stocks = items;
             for (const button of buttons) {
                 const x = Number(button.dataset.x), y = Number(button.dataset.y);
                 const contents = stocks.filter((stock) => stock.x === x && stock.y === y);
                 const active = selected !== null && selected.x === x && selected.y === y;
-                button.disabled = disabled || (onlyEmpty && contents.length > 0);
-                button.className = `btn ${active ? 'btn-warning' : contents.length ? 'btn-primary' : 'btn-outline-secondary'} p-1 d-flex flex-column align-items-center justify-content-center w-100`;
+                const isDestination = destination !== null && destination.x === x && destination.y === y;
+                button.disabled = disabled || (onlyEmpty && contents.length > 0) || (occupiedOnly && contents.length === 0);
+                const marked = highlighted && highlighted.has(`${x}:${y}`);
+                const color = isDestination ? 'btn-danger' : active ? 'btn-warning' : marked ? `btn-${highlightVariant}` : contents.length ? 'btn-primary' : 'btn-outline-secondary';
+                button.className = `btn ${color} p-1 d-flex flex-column align-items-center justify-content-center w-100`;
                 button.setAttribute('aria-pressed', String(active));
                 button.setAttribute('aria-label', `Ячейка ${cellName(x, y)}, ${contents.length ? `видов товара: ${contents.length}, всего: ${contents.reduce((sum, item) => sum + item.count, 0)} шт.` : 'свободна'}`);
                 button.children[1].textContent = contents.length ? `${contents.length} вид.` : '';
