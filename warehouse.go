@@ -366,8 +366,8 @@ type WarehouseCell struct {
 // MergeWarehouseCells переносит все товары из исходных ячеек в целевую.
 // Целевая ячейка может совпадать с одной из исходных или быть любой другой.
 func (s *DBService) MergeWarehouseCells(sources []WarehouseCell, destinationX, destinationY int) error {
-	if len(sources) < 2 || len(sources) > 4 {
-		return errors.New("для объединения выберите от 2 до 4 исходных ячеек")
+	if len(sources) < 2 {
+		return errors.New("для объединения выберите исходную ячейку и хотя бы одну дополнительную")
 	}
 	if err := validateWarehouseCell(destinationX, destinationY); err != nil {
 		return err

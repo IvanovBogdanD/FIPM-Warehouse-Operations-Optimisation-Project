@@ -9,6 +9,7 @@ let movementMode = 'browse';
 let movementStock = null;
 let movementQuantity = 0;
 let movementMergeSources = [];
+let movementMoveAll = false;
 let movementDestination = null;
 let movementHighlightedProduct = null;
 let movementShowItems = false;
@@ -155,7 +156,7 @@ function renderActions() {
     if (!movementSelected || movementMode === 'browse') {
         if (movementSelected && cellItems(movementSelected).length) {
             root.append(button('Переместить товар', 'btn-primary w-100 mb-2', () => {
-                movementStock = null; movementQuantity = 0; movementDestination = null; movementShowItems = false; setMode('move-choose');
+                movementStock = null; movementQuantity = 0; movementDestination = null; movementShowItems = false; movementMoveAll = false; setMode('move-choose');
             }));
             root.append(button('Объединить ячейки', 'btn-outline-primary w-100', () => {
                 movementMergeSources = [movementSelected]; movementDestination = null; movementShowItems = false; setMode('merge-select');
@@ -171,6 +172,7 @@ function renderActions() {
         const placeholder = document.createElement('option');
         placeholder.value = ''; placeholder.textContent = 'Выберите товар'; placeholder.disabled = true; placeholder.selected = true; placeholder.hidden = true;
         select.append(placeholder);
+        const allOption = document.createElement('option'); allOption.value = 'all'; allOption.textContent = 'Все содержимое ячейки'; select.append(allOption);
         for (const item of cellItems(movementSelected)) {
             const option = document.createElement('option'); option.value = item.id; option.textContent = `${item.name} — ${item.count} шт.`; select.append(option);
         }
@@ -184,12 +186,23 @@ function renderActions() {
             quantity.dispatchEvent(new Event('input', { bubbles: true }));
         }, true);
         const next = button('Выбрать место хранения', 'btn-primary w-100', () => {
+            if (select.value === 'all') {
+                movementMoveAll = true; movementStock = null; movementQuantity = 0; movementDestination = null; setMode('move-target');
+                return;
+            }
             const item = cellItems(movementSelected).find((s) => String(s.id) === select.value);
             const amount = Number(quantity.value);
             if (!item || !Number.isInteger(amount) || amount < 1 || amount > item.count) return;
-            movementStock = item; movementQuantity = amount; movementDestination = null; setMode('move-target');
+            movementMoveAll = false; movementStock = item; movementQuantity = amount; movementDestination = null; setMode('move-target');
         }, true);
         select.addEventListener('change', () => {
+            if (select.value === 'all') {
+                quantity.hidden = true; quantity.disabled = true; quantity.value = '';
+                all.hidden = true;
+                next.disabled = false;
+                return;
+            }
+            quantity.hidden = false; all.hidden = false;
             const item = cellItems(movementSelected).find((s) => String(s.id) === select.value);
             quantity.disabled = !item;
             quantity.max = item ? String(item.count) : '0';
@@ -204,7 +217,8 @@ function renderActions() {
         });
         root.append(select, quantity, all, next);
     } else if (movementMode === 'move-target') {
-        root.append(paragraph(`Товар: ${movementStock.name} · ${movementQuantity} шт.`, 'fw-semibold mb-2'));
+        const label = movementMoveAll ? 'Товар: всё содержимое ячейки' : `Товар: ${movementStock.name} · ${movementQuantity} шт.`;
+        root.append(paragraph(label, 'fw-semibold mb-2'));
         root.append(paragraph(`Откуда: ${cellName(movementSelected.x, movementSelected.y)}`, 'text-success fw-semibold mb-1'));
         root.append(paragraph('Выберите ячейку назначения на карте.', 'small text-body-secondary mb-2'));
         if (movementDestination) {
@@ -212,8 +226,8 @@ function renderActions() {
             root.append(button('Подтвердить перемещение', 'btn-success w-100', confirmMove));
         }
     } else if (movementMode === 'merge-select') {
-        root.append(paragraph(`Исходная ячейка: ${cellName(movementSelected.x, movementSelected.y)}. Выберите ещё от 1 до 3 непустых ячеек.`, 'fw-semibold'));
-        const count = paragraph(`Выбрано: ${movementMergeSources.length - 1} /3`, 'fw-bold text-success mb-2');
+        root.append(paragraph(`Исходная ячейка: ${cellName(movementSelected.x, movementSelected.y)}. Выберите ещё непустые ячейки.`, 'fw-semibold'));
+        const count = paragraph(`Выбрано: ${movementMergeSources.length - 1}`, 'fw-bold text-success mb-2');
         count.style.fontSize = '1.05rem';
         root.append(count);
         root.append(button('Выбрать ячейку назначения', 'btn-primary w-100', () => {
@@ -246,20 +260,31 @@ function onCell(cell) {
         const index = movementMergeSources.findIndex((c) => sameCell(c, cell));
         if (index >= 0) { movementMergeSources.splice(index, 1); render(); return; }
         if (!cellItems(cell).length) return setMovementStatus('Для объединения можно выбрать только непустые ячейки.', 'warning');
-        if (movementMergeSources.length >= 4) return setMovementStatus('Можно выбрать не более трёх дополнительных ячеек.', 'warning');
         movementMergeSources.push({ x: cell.x, y: cell.y }); render(); return;
     }
     if (movementMode === 'merge-target') { movementDestination = cell; render(); }
 }
 function resetOperation() {
-    movementMode = 'browse'; movementStock = null; movementQuantity = 0;
+    movementMode = 'browse'; movementStock = null; movementQuantity = 0; movementMoveAll = false;
     movementMergeSources = []; movementDestination = null; movementSelected = null; movementShowItems = false;
     clearProductFilter();
     byId('movements-cancel').hidden = true;
     render();
 }
 async function confirmMove() {
-    if (!movementStock || !movementDestination) return;
+    if (!movementDestination) return;
+    if (movementMoveAll) {
+        if (!movementSelected) return;
+        try {
+            for (const item of cellItems(movementSelected)) {
+                await callBackend('MoveWarehouseStock', item.id, item.count, movementDestination.x, movementDestination.y);
+            }
+            await loadMovements();
+            setMovementStatus('Товар успешно перемещён.', 'success');
+        } catch (error) { showError(byId('movements-status'), error); }
+        return;
+    }
+    if (!movementStock) return;
     try {
         await callBackend('MoveWarehouseStock', movementStock.id, movementQuantity, movementDestination.x, movementDestination.y);
         await loadMovements();

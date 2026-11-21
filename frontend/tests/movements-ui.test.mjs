@@ -37,10 +37,12 @@ test('Перемещение требует выбора товара и кол�
     assert.match(js, /const disabled = movementMode === 'move-choose'/);
 });
 
-test('Объединение допускает только занятые ячейки и требует хотя бы одну дополнительную', () => {
+test('Объединение допускает только занятые ячейки, требует хотя бы одну дополнительную и не ограничено сверху', () => {
     assert.match(js, /movementMergeSources\.length < 2/);
     assert.match(js, /movementMode === 'merge-select'\);/);
-    assert.match(js, /Выбрано: \$\{movementMergeSources\.length - 1\} \/3/);
+    assert.match(js, /Выбрано: \$\{movementMergeSources\.length - 1\}`/);
+    assert.doesNotMatch(js, /\/3/);
+    assert.doesNotMatch(js, /movementMergeSources\.length >= 4/);
     assert.match(js, /fw-bold text-success mb-2/);
     assert.match(grid, /occupiedOnly && contents\.length === 0/);
     assert.match(grid, /`btn-\$\{highlightVariant\}`/);
@@ -100,4 +102,18 @@ test('Открытый список закрывается крестиком и
 test('Панель действий не зависит от открытия списка всех товаров', () => {
     assert.ok(!js.includes("if (movementMode === 'browse' && movementShowItems) return"));
     assert.ok(js.includes('function renderActions()'));
+});
+
+test('Пункт "Все содержимое ячейки" стоит первым в списке и скрывает количество', () => {
+    assert.match(js, /allOption\.value = 'all'; allOption\.textContent = 'Все содержимое ячейки'; select\.append\(allOption\);/);
+    assert.match(js, /select\.append\(placeholder\);\s*\n\s*const allOption/);
+    assert.match(js, /if \(select\.value === 'all'\) \{\s*\n\s*quantity\.hidden = true; quantity\.disabled = true; quantity\.value = '';\s*\n\s*all\.hidden = true;\s*\n\s*next\.disabled = false;/);
+    assert.match(js, /movementMoveAll = true; movementStock = null; movementQuantity = 0; movementDestination = null; setMode\('move-target'\);/);
+});
+
+test('Перемещение "всего содержимого ячейки" переносит каждую позицию и восстанавливает обычный режим при смене выбора', () => {
+    assert.match(js, /const label = movementMoveAll \? 'Товар: всё содержимое ячейки' : `Товар: \$\{movementStock\.name\} · \$\{movementQuantity\} шт\.`;/);
+    assert.match(js, /for \(const item of cellItems\(movementSelected\)\) \{\s*\n\s*await callBackend\('MoveWarehouseStock', item\.id, item\.count, movementDestination\.x, movementDestination\.y\);/);
+    assert.match(js, /quantity\.hidden = false; all\.hidden = false;/);
+    assert.match(js, /movementMoveAll = false; movementStock = item; movementQuantity = amount; movementDestination = null; setMode\('move-target'\);/);
 });
