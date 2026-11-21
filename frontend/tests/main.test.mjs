@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const templateFiles = ['index.html', 'src/layout/layout.html', 'src/pages/home/home.html',
     'src/pages/catalog/catalog.html', 'src/pages/catalog/product.html', 'src/pages/orders/orders.html', 'src/pages/order-form/order-form.html', 'src/pages/receiving/receiving.html',
-    'src/pages/auth/auth.html', 'src/pages/users/users.html', 'src/pages/inventory/inventory.html', 'src/pages/warehouse/warehouse.html', 'src/pages/reports/reports.html'];
+    'src/pages/auth/auth.html', 'src/pages/users/users.html', 'src/pages/inventory/inventory.html', 'src/pages/warehouse/warehouse.html', 'src/pages/warehouse/movements.html', 'src/pages/reports/reports.html'];
 const inventoryAct = await readFile(new URL('../src/pages/inventory/inventory-act.html', import.meta.url), 'utf8');
 const managerPicker = await readFile(new URL('../src/shared/manager-picker.html', import.meta.url), 'utf8');
 const pickerIds = ['order-form-responsible', 'order-complete-person', 'receiving-responsible', 'inventory-responsible', 'inventory-commission-toggle'];
@@ -13,7 +13,7 @@ const html = (await Promise.all(templateFiles.map((file) => readFile(new URL(`..
     .join('\n') + inventoryAct + inventoryAct.replaceAll('inventory-report-', 'reports-act-')
     + pickerIds.map((id) => managerPicker.replaceAll('manager-picker', id)).join('\n');
 const moduleFiles = ['shared/warehouse-grid.js', 'shared/api.js', 'shared/dom.js', 'shared/manager-picker.js', 'shared/product-search.js', 'shared/icons.js', 'shared/modal.js', 'layout/layout.js',
-    'pages/home/home.js', 'pages/warehouse/warehouse.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'pages/receiving/receiving.js', 'pages/orders/orders.js', 'pages/order-form/order-form.js',
+    'pages/home/home.js', 'pages/warehouse/warehouse.js', 'pages/warehouse/movements.js', 'pages/catalog/catalog.js', 'pages/catalog/product.js', 'pages/receiving/receiving.js', 'pages/orders/orders.js', 'pages/order-form/order-form.js',
     'pages/auth/auth.js', 'pages/users/users.js', 'pages/inventory/inventory-data.js', 'pages/inventory/product-search.js', 'pages/inventory/inventory-report.js', 'pages/inventory/inventory.js', 'pages/reports/reports.js', 'app/router.js', 'main.js'];
 const scripts = [];
 for (const file of moduleFiles) {
@@ -149,7 +149,7 @@ async function app(service = {}, hash = '#products', role = 'Менеджер', 
         for (const id of ['order-form-date', 'order-form-address', 'order-form-note']) elements[id].value = '';
     };
     elements['receiving-placement'].value = 'auto';
-    const navLinks = ['#home', '#products', '#orders', '#warehouse', '#reports'].map((hash) => Object.assign(new Element(), { hash }));
+    const navLinks = ['#home', '#products', '#orders', '#warehouse', '#movements', '#reports'].map((hash) => Object.assign(new Element(), { hash }));
     const context = vm.createContext({
         window, location, Event, confirm: () => true,
         sessionStorage: { getItem: () => JSON.stringify({ id: role === 'Менеджер' ? 1 : 3, role, firstName: 'Иван', lastName: 'Иванов' }) },
@@ -210,11 +210,22 @@ function inventoryDraft(items = []) {
     return { id: 1, status: 'draft', createdAt: '2026-11-07 10:00:00', date: '', responsible: '', responsibleManagers: [], commission: '', kind: 'partial', items };
 }
 
+test('Менеджер видит вкладку перемещений, кладовщик и администратор не получают к ней доступ', async () => {
+    const manager = await app({}, '#movements', 'Менеджер');
+    assert.equal(manager.elements['movements-page'].hidden, false);
+    assert.equal(manager.elements['nav-movements'].classes.has('d-none'), false);
+    assert.equal(manager.elements['page-title'].textContent, 'Перемещения');
+    const clerk = await app({}, '#inventory', 'Кладовщик');
+    assert.equal(clerk.elements['nav-movements'].classes.has('d-none'), true);
+    const admin = await app({}, '#users', 'Администратор');
+    assert.equal(admin.elements['nav-movements'].classes.has('d-none'), true);
+});
+
 test('Кладовщик остаётся в инвентаризации и видит только её меню', async () => {
     const ui = await app({}, '#inventory', 'Кладовщик');
     assert.equal(ui.elements['inventory-page'].hidden, false);
     assert.equal(ui.elements['nav-inventory'].classes.has('d-none'), false);
-    for (const id of ['nav-products', 'nav-orders', 'nav-home', 'nav-users']) {
+    for (const id of ['nav-products', 'nav-orders', 'nav-home', 'nav-users', 'nav-movements']) {
         assert.equal(ui.elements[id].classes.has('d-none'), true);
     }
     await ui.navigate('#products');

@@ -8,10 +8,11 @@ import { loadInventory } from '../pages/inventory/inventory.js';
 import { loadOrders } from '../pages/orders/orders.js';
 import { loadOrderForm } from '../pages/order-form/order-form.js';
 import { loadWarehouse } from '../pages/warehouse/warehouse.js';
+import { loadMovements } from '../pages/warehouse/movements.js';
 import { loadReports } from '../pages/reports/reports.js';
 
 function updateMenuVisibility(role) {
-    const menuItems = ['nav-home', 'nav-products', 'nav-warehouse', 'nav-orders', 'nav-inventory', 'nav-analytics', 'nav-analytics-header', 'nav-users'];
+    const menuItems = ['nav-home', 'nav-products', 'nav-warehouse', 'nav-movements', 'nav-orders', 'nav-inventory', 'nav-analytics', 'nav-analytics-header', 'nav-users'];
     menuItems.forEach(id => {
         const el = byId(id);
         if (el) el.classList.add('d-none');
@@ -28,6 +29,7 @@ function updateMenuVisibility(role) {
         if (byId('nav-home')) byId('nav-home').classList.remove('d-none');
         if (byId('nav-products')) byId('nav-products').classList.remove('d-none');
         byId('nav-warehouse').classList.remove('d-none');
+        if (byId('nav-movements')) byId('nav-movements').classList.remove('d-none');
         if (byId('nav-orders')) byId('nav-orders').classList.remove('d-none');
         if (byId('nav-analytics')) byId('nav-analytics').classList.remove('d-none');
         if (byId('nav-analytics-header')) byId('nav-analytics-header').classList.remove('d-none');
@@ -80,7 +82,7 @@ async function route() {
         }
     } 
     else if (user.role === 'Администратор') {
-        if (['products', 'product', 'warehouse', 'orders', 'orders/new', 'orders/new/writeoff', 'receiving', 'inventory'].includes(hash)) {
+        if (['products', 'product', 'warehouse', 'movements', 'orders', 'orders/new', 'orders/new/writeoff', 'receiving', 'inventory'].includes(hash)) {
             location.hash = '#users';
             return;
         }
@@ -104,6 +106,7 @@ async function route() {
     let page = 'home';
     if (hash === 'products') page = 'catalog';
     if (hash === 'warehouse') page = 'warehouse';
+    if (hash === 'movements') page = 'movements';
     if (reportMatch) page = 'reports';
     if (productMatch) page = 'product';
     if (hash === 'orders') page = 'orders';
@@ -115,7 +118,7 @@ async function route() {
     const titles = {
         home: 'Главная', catalog: 'Товары', product: 'Товары / Карточка товара',
         orders: 'Заказы', 'order-form': 'Заказы', receiving: 'Заказы', users: 'Пользователи',
-        inventory: 'Инвентаризация', warehouse: 'Карта склада', reports: 'Отчёты'
+        inventory: 'Инвентаризация', warehouse: 'Карта склада', movements: 'Перемещения', reports: 'Отчёты'
     };
 
     for (const name of Object.keys(titles)) {
@@ -144,6 +147,7 @@ async function route() {
     if (page === 'users') await loadUsers();
     if (page === 'inventory') await loadInventory();
     if (page === 'warehouse') await loadWarehouse();
+    if (page === 'movements') await loadMovements();
     if (page === 'reports') await loadReports(reportMatch[1] ? Number(reportMatch[1]) : null);
 }
 

@@ -15,6 +15,7 @@ import { initReports } from './pages/reports/reports.js';
 import { initOrders } from './pages/orders/orders.js';
 import { initOrderForm } from './pages/order-form/order-form.js';
 import { initWarehouse } from './pages/warehouse/warehouse.js';
+import { initMovements } from './pages/warehouse/movements.js';
 
 mountLayout();
 initHome();
@@ -27,4 +28,5 @@ initReports();
 initOrders();
 initOrderForm();
 initWarehouse();
+initMovements();
 initRouter();

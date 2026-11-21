@@ -333,3 +333,48 @@ func TestWarehouseReceivingFailureRollsBackWholeCell(t *testing.T) {
 	}
 	checkWarehouseTotals(t, s)
 }
+
+func TestWarehouseMoveAndMergeKeepProductTotals(t *testing.T) {
+	s, _ := testOrderStore(t)
+	stocks, err := s.GetWarehouseStocks()
+	if err != nil || len(stocks) != 2 {
+		t.Fatalf("initial stocks=%+v err=%v", stocks, err)
+	}
+	milk := stocks[0]
+	if err := s.MoveWarehouseStock(milk.ID, 4, 3, 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MoveWarehouseStock(milk.ID, 7, 4, 4); err == nil {
+		t.Fatal("moved more than source quantity")
+	}
+	locations, err := s.GetProductLocations(1)
+	if err != nil || len(locations) != 2 {
+		t.Fatalf("locations=%+v err=%v", locations, err)
+	}
+	if locations[0].Count != 6 || locations[1].Count != 4 {
+		t.Fatalf("partial move=%+v", locations)
+	}
+
+	if err := s.MergeWarehouseCells([]WarehouseCell{{X: 1, Y: 1}, {X: 2, Y: 1}}, 3, 3); err != nil {
+		t.Fatal(err)
+	}
+	stocks, err = s.GetWarehouseStocks()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stocks) != 2 {
+		t.Fatalf("expected two product rows in destination, got %+v", stocks)
+	}
+	for _, stock := range stocks {
+		if stock.X != 3 || stock.Y != 3 {
+			t.Fatalf("stock outside destination: %+v", stock)
+		}
+	}
+	checkWarehouseTotals(t, s)
+	if err := s.MergeWarehouseCells([]WarehouseCell{{X: 3, Y: 3}, {X: 8, Y: 8}}, 4, 4); err == nil {
+		t.Fatal("merge accepted an empty source cell")
+	}
+	if err := s.MoveWarehouseStock(locations[0].ID, 1, 9, 9); err == nil {
+		t.Fatal("move accepted invalid destination")
+	}
+}
