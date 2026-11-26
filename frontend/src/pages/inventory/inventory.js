@@ -15,8 +15,8 @@ let inventoryGrid;
 let inventoryStocks = [];
 let inventoryCellChoice = null;
 let inventoryUsesCells = true;
-let inventoryManagers;
 let inventoryCommission;
+let currentUser = null;
 
 function choiceFromInventoryItem(item) {
     return { id: inventoryUsesCells ? item.stockId : item.productId, name: item.productName, count: item.systemCount,
@@ -31,7 +31,6 @@ async function loadInventoryGrid() {
 }
 
 export function initInventory() {
-    inventoryManagers = createManagerPicker('inventory-responsible');
     inventoryCommission = createManagerPicker('inventory-commission-toggle', 'Выберите сотрудников');
     inventoryGrid = createWarehouseGrid(byId('inventory-grid'), (cell) => {
         inventoryCellChoice = cell;
@@ -47,17 +46,16 @@ export function initInventory() {
         }
         inventorySelected.add(product.id);
         renderInventorySelection();
-    }, (products) => {
-        // Не перезаписываем inventoryChoices, чтобы таблица выбранных не пропадала
-    });
+    }, (products) => {});
 
     byId('btn-create-inventory').addEventListener('click', () => runInventoryAction('btn-create-inventory', async () => {
         inventoryDetails = null;
         inventoryChoices = [];
         inventorySelected.clear();
         
-        const created = await window.go.main.InventoryService.CreateInventory();
-        await openInventory(await window.go.main.InventoryService.GetInventory(created.id));
+        const user = JSON.parse(sessionStorage.getItem('user'));
+        const created = await window.go.main.InventoryService.CreateInventory(user.id, user.role);
+        await openInventory(await window.go.main.InventoryService.GetInventory(created.id, user.id));
     }));
 
     byId('inventory-selection-body').addEventListener('click', (event) => {
@@ -77,8 +75,9 @@ export function initInventory() {
             const id = Number(btn.dataset.removeId);
             try {
                 await saveInventoryCounts(false);
+                const user = JSON.parse(sessionStorage.getItem('user'));
                 const method = inventoryDetails.byCells ? 'DeleteInventoryCell' : 'DeleteInventoryItem';
-                inventoryDetails = await window.go.main.InventoryService[method](inventoryDetails.id, id);
+                inventoryDetails = await window.go.main.InventoryService[method](inventoryDetails.id, id, user.id);
                 renderInventoryCounts();
             } catch (error) {
                 showError(byId('inventory-status'), error);
@@ -88,7 +87,8 @@ export function initInventory() {
 
     byId('inventory-back-to-creation').addEventListener('click', () => runInventoryAction('inventory-back-to-creation', async () => {
         await saveInventoryCounts(false);
-        inventoryDetails = await window.go.main.InventoryService.GetInventory(inventoryDetails.id);
+        const user = JSON.parse(sessionStorage.getItem('user'));
+        inventoryDetails = await window.go.main.InventoryService.GetInventory(inventoryDetails.id, user.id);
         inventorySelected.clear();
         inventoryChoices = inventoryDetails.items.map(choiceFromInventoryItem);
         inventoryChoices.forEach((product) => inventorySelected.add(product.id));
@@ -111,8 +111,12 @@ export function initInventory() {
         const button = event.target.closest('button[data-inventory-id]');
         if (button) return runInventoryAction('btn-create-inventory', async () => {
             const id = Number(button.dataset.inventoryId);
-            if (button.dataset.inventoryStatus === 'completed') await openCompletedInventory(id);
-            else await openInventory(await window.go.main.InventoryService.GetInventory(id));
+            const user = JSON.parse(sessionStorage.getItem('user'));
+            if (button.dataset.inventoryStatus === 'completed' || button.dataset.inventoryStatus === 'approved') {
+                await openCompletedInventory(id);
+            } else {
+                await openInventory(await window.go.main.InventoryService.GetInventory(id, user.id));
+            }
         });
     });
     
@@ -154,21 +158,38 @@ export function initInventory() {
         renderInventoryComparison();
         showStatus(byId('inventory-status'), 'Результаты сверки сохранены.');
     }));
-    byId('btn-apply-inventory').addEventListener('click', () => runInventoryAction('btn-apply-inventory', async () => {
+    
+    byId('inventory-submit-review').addEventListener('click', () => runInventoryAction('inventory-submit-review', async () => {
         await saveInventoryCounts(true);
-        renderInventoryComparison();
-        showInventoryCorrection();
+        const user = JSON.parse(sessionStorage.getItem('user'));
+        await window.go.main.InventoryService.SubmitForReview(inventoryDetails.id, user.id, user.role);
+        showModal('inventory-submitted-modal');
     }));
-    byId('inventory-comparison-body').addEventListener('change', refreshInventoryComparison);
-    byId('inventory-correction-confirm').addEventListener('click', () => runInventoryAction('inventory-correction-confirm', async () => {
-        await window.go.main.InventoryService.ApplyInventory(inventoryDetails.id);
-        inventoryDetails = await window.go.main.InventoryService.GetInventoryReport(inventoryDetails.id);
-        hideModal('inventory-correction-modal');
-        showInventoryReport();
-    }, 'inventory-correction-status'));
+
+    byId('inventory-submitted-ok').addEventListener('click', () => {
+        hideModal('inventory-submitted-modal');
+        showInventoryHistory();
+    });
+
+    byId('inventory-approve').addEventListener('click', () => runInventoryAction('inventory-approve', async () => {
+        await saveInventoryCounts(false);
+        const user = JSON.parse(sessionStorage.getItem('user'));
+        await window.go.main.InventoryService.ApproveInventory(inventoryDetails.id, user.id, user.role);
+        inventoryDetails = await window.go.main.InventoryService.GetInventory(inventoryDetails.id, user.id);
+        if (inventoryDetails.status === 'completed') {
+            showStatus(byId('inventory-status'), 'Инвентаризация завершена. Остатки скорректированы.');
+            inventoryDetails = await window.go.main.InventoryService.GetInventoryReport(inventoryDetails.id, user.id, user.role);
+            showInventoryReport();
+        } else {
+            showStatus(byId('inventory-status'), 'Вы подтвердили результаты. Ожидаем остальных членов комиссии.');
+            showInventoryStage('compare');
+        }
+    }));
+
     byId('inventory-open-report').addEventListener('click', () => runInventoryAction('inventory-open-report', async () => {
         await saveInventoryCounts(true);
-        inventoryDetails = await window.go.main.InventoryService.GenerateInventoryReport(inventoryDetails.id);
+        const user = JSON.parse(sessionStorage.getItem('user'));
+        inventoryDetails = await window.go.main.InventoryService.GetInventoryReport(inventoryDetails.id, user.id, user.role);
         showInventoryReport();
     }));
     for (const [id, print] of [['inventory-download-pdf', false], ['inventory-print', true]]) {
@@ -186,23 +207,33 @@ async function runInventoryAction(buttonId, action, statusId = 'inventory-status
     finally { inventoryBusy = false; byId(buttonId).disabled = false; }
 }
 
-export async function loadInventory() {
+export async function loadInventory(inventoryId = null) {
+    const userStr = sessionStorage.getItem('user');
+    if (userStr) currentUser = JSON.parse(userStr);
+
     closeInventorySearch();
     showStatus(byId('inventory-status'), 'Загрузка инвентаризации...');
     try {
-        await showInventoryHistory();
+        if (inventoryId) {
+            const details = await window.go.main.InventoryService.GetInventory(inventoryId, currentUser.id);
+            await openInventory(details);
+        } else {
+            await showInventoryHistory();
+        }
         showStatus(byId('inventory-status'), '');
     } catch (error) { showError(byId('inventory-status'), error); }
 }
 
 async function showInventoryHistory() {
     closeInventorySearch();
-    const inventories = await window.go.main.InventoryService.GetInventories();
+    if (!currentUser) return;
+    
+    const inventories = await window.go.main.InventoryService.GetInventories(currentUser.id, currentUser.role);
     
     byId('inventory-empty').hidden = false;
     byId('inventory-active').hidden = true;
     byId('inventory-steps').hidden = true;
-    byId('btn-create-inventory').style.display = 'inline-block';
+    byId('btn-create-inventory').style.display = (currentUser.role === 'Кладовщик') ? 'inline-block' : 'none';
     
     byId('inventory-title').textContent = 'Инвентаризация';
     byId('page-title').textContent = 'Инвентаризация';
@@ -213,22 +244,62 @@ async function showInventoryHistory() {
     
     for (const inventory of inventories) {
         const row = document.createElement('tr');
-        for (const value of [inventoryNumber(inventory), inventory.date ? inventoryDate(inventory.date) : '-', inventory.responsible || 'Не указано', inventory.status === 'completed' ? 'Завершена' : 'Черновик']) {
+        
+        let statusText = 'Черновик';
+        if (inventory.status === 'completed') statusText = 'Завершена';
+        else if (inventory.status === 'pending') {
+            if (currentUser.role === 'Менеджер') {
+                if (inventory.isApprovedByMe) {
+                    statusText = inventory.waitForOtherApprove ? 'На согласовании комиссии' : 'Завершена';
+                } else {
+                    statusText = 'Требует вашего подтверждения';
+                }
+            } else {
+                statusText = 'Ожидает подтверждения';
+            }
+        }
+        
+        for (const value of [inventoryNumber(inventory), inventory.date ? inventoryDate(inventory.date) : '-', inventory.commission || 'Не указано', statusText]) {
             row.append(inventoryCell(value));
         }
+        
         const cell = document.createElement('td');
-        const button = document.createElement('button');
-        button.type = 'button'; button.className = 'btn btn-outline-primary btn-sm';
-        button.textContent = inventory.status === 'completed' ? 'Открыть акт' : 'Продолжить';
-        button.dataset.inventoryId = inventory.id;
-        button.dataset.inventoryStatus = inventory.status;
-        cell.append(button); row.append(cell); body.append(row);
+        if (inventory.status === 'completed') {
+            const button = document.createElement('button');
+            button.type = 'button'; button.className = 'btn btn-outline-primary btn-sm';
+            button.textContent = 'Открыть акт';
+            button.dataset.inventoryId = inventory.id;
+            button.dataset.inventoryStatus = inventory.status;
+            cell.append(button);
+        } else if (inventory.status === 'draft' && currentUser.role === 'Кладовщик') {
+            const button = document.createElement('button');
+            button.type = 'button'; button.className = 'btn btn-outline-primary btn-sm';
+            button.textContent = 'Продолжить';
+            button.dataset.inventoryId = inventory.id;
+            button.dataset.inventoryStatus = inventory.status;
+            cell.append(button);
+        } else if (inventory.status === 'pending' && currentUser.role === 'Менеджер') {
+            const button = document.createElement('button');
+            button.type = 'button'; button.className = 'btn btn-outline-primary btn-sm';
+            if (!inventory.isApprovedByMe) {
+                button.textContent = 'Проверить';
+                button.dataset.inventoryStatus = 'pending';
+            } else {
+                button.textContent = 'Открыть акт';
+                button.dataset.inventoryStatus = 'approved';
+            }
+            button.dataset.inventoryId = inventory.id;
+            cell.append(button);
+        }
+        
+        row.append(cell);
+        body.append(row);
     }
     byId('inventory-history-empty').hidden = inventories.length > 0;
 }
 
 async function openCompletedInventory(id) {
-    inventoryDetails = await window.go.main.InventoryService.GetInventoryReport(id);
+    inventoryDetails = await window.go.main.InventoryService.GetInventoryReport(id, currentUser.id, currentUser.role);
     showInventoryReport();
 }
 
@@ -237,6 +308,7 @@ async function openInventory(details) {
         await openCompletedInventory(details.id);
         return;
     }
+    
     inventoryDetails = details;
     inventoryUsesCells = details.byCells || details.items.length === 0;
     inventoryCellChoice = null;
@@ -248,9 +320,21 @@ async function openInventory(details) {
     
     await loadInventoryGrid();
     
+    if (currentUser.role === 'Кладовщик' && details.status === 'pending') {
+        inventoryDetails = await window.go.main.InventoryService.GetInventoryReport(details.id, currentUser.id, currentUser.role);
+        showInventoryReport();
+        return;
+    }
+
     if (details.items.length > 0) {
-        if (details.items.every((item) => item.actualCount !== null)) { renderInventoryComparison(); showInventoryStage('compare'); }
-        else { renderInventoryCounts(); showInventoryStage('count'); }
+        if (details.status === 'pending') {
+            renderInventoryComparison();
+            showInventoryStage('compare');
+        } else if (details.items.every((item) => item.actualCount !== null)) {
+            renderInventoryComparison(); showInventoryStage('compare');
+        } else { 
+            renderInventoryCounts(); showInventoryStage('count'); 
+        }
         return;
     }
     
@@ -267,9 +351,7 @@ async function openInventory(details) {
 
 async function loadInventoryPeople(details) {
     const employees = await window.go.main.InventoryService.GetInventoryEmployees();
-    inventoryManagers.render(employees, details.responsibleManagers.map((manager) => manager.id));
-    const existingCommission = details.commission.split(', ');
-    inventoryCommission.render(employees, employees.filter((employee) => existingCommission.includes(employee.name)).map((employee) => employee.id));
+    inventoryCommission.render(employees, details.commissionManagers.map((manager) => manager.id));
 }
 
 function showInventoryStage(stage) {
@@ -289,8 +371,38 @@ function showInventoryStage(stage) {
     }
     byId('inventory-title').textContent = stage === 'create' ? 'Новая инвентаризация' : `Инвентаризация ${inventoryNumber(inventoryDetails)}`;
     byId('page-title').textContent = `Инвентаризация / ${stage === 'create' ? 'Новая инвентаризация' : inventoryNumber(inventoryDetails)}`;
-    const parameters = [inventoryDetails.date ? inventoryDate(inventoryDetails.date) : 'Черновик', inventoryDetails.responsible].filter(Boolean);
+    const parameters = [inventoryDetails.date ? inventoryDate(inventoryDetails.date) : 'Черновик', inventoryDetails.commission].filter(Boolean);
     byId('inventory-subtitle').textContent = `${inventoryNumber(inventoryDetails)} · ${parameters.join(' · ')}`;
+
+    const isStorekeeper = currentUser.role === 'Кладовщик';
+    const isManager = currentUser.role === 'Менеджер';
+    const isDraft = inventoryDetails.status === 'draft';
+    const isPending = inventoryDetails.status === 'pending';
+
+    byId('inventory-back-count').style.display = (stage === 'compare' && isDraft && isStorekeeper) ? 'inline-block' : 'none';
+    byId('inventory-save-compare').style.display = (stage === 'compare' && (isDraft || isPending)) ? 'inline-block' : 'none';
+    byId('inventory-submit-review').style.display = (stage === 'compare' && isDraft && isStorekeeper) ? 'inline-block' : 'none';
+    byId('inventory-approve').style.display = (stage === 'compare' && isPending && isManager && !inventoryDetails.isApprovedByMe) ? 'inline-block' : 'none';
+    
+    const canViewReport = (stage === 'compare' && isPending && isManager && inventoryDetails.isApprovedByMe);
+    byId('inventory-open-report').style.display = canViewReport ? 'inline-block' : 'none';
+
+    const hint = byId('inventory-reconciliation-hint');
+    if (hint) {
+        if (isStorekeeper && isDraft) {
+            hint.textContent = 'После нажатия на «Отправить на проверку» инвентаризация будет отправлена всем членам комиссии, изменение станет недоступным.';
+            hint.className = 'alert alert-warning mb-0';
+        } else if (isManager && isPending && !inventoryDetails.isApprovedByMe) {
+            hint.textContent = 'Вы можете скорректировать фактическое количество. После подтверждения всеми членами комиссии остатки в системе будут обновлены.';
+            hint.className = 'alert alert-info mb-0';
+        } else if (isManager && isPending && inventoryDetails.isApprovedByMe) {
+            hint.textContent = 'Вы уже подтвердили результаты. Ожидаем подтверждения от остальных членов комиссии.';
+            hint.className = 'alert alert-success mb-0';
+        } else {
+            hint.textContent = 'Корректировка приведёт количество в системе к фактическому.';
+            hint.className = 'alert alert-primary mb-0';
+        }
+    }
 }
 
 function inventoryCell(value, className = '') {
@@ -336,29 +448,30 @@ function renderInventorySelection() {
 }
 
 async function startInventoryCount() {
+    const user = JSON.parse(sessionStorage.getItem('user'));
     const request = {
         date: byId('inventory-date').value, 
-        responsibleIds: inventoryManagers.ids(),
-        commission: inventoryCommission.names().join(', '),
+        commissionIds: inventoryCommission.ids(),
         kind: byId('inventory-kind-full').checked ? 'full' : 'partial', 
         ...(inventoryUsesCells ? { byCells: true, stockIds: Array.from(inventorySelected) } : { productIds: Array.from(inventorySelected) }),
     };
     
     if (!request.date) throw new Error('Укажите дату проведения.');
-    if (!request.responsibleIds.length) throw new Error('Выберите ответственных менеджеров.');
+    if (!request.commissionIds.length) throw new Error('Выберите хотя бы одного члена комиссии.');
     if (request.kind === 'partial' && inventorySelected.size === 0) throw new Error('Выберите товары для проверки.');
     
-    inventoryDetails = await window.go.main.InventoryService.PrepareInventory(inventoryDetails.id, request);
+    inventoryDetails = await window.go.main.InventoryService.PrepareInventory(inventoryDetails.id, request, user.id);
     renderInventoryCounts(); showInventoryStage('count');
 }
 
-function inventoryInputCell(item, field) {
+function inventoryInputCell(item, field, readonly = false) {
     const actual = field === 'actualCount';
     const input = document.createElement('input');
     input.type = actual ? 'number' : 'text';
     input.className = 'form-control form-control-sm';
     input.value = item[field] === null ? '' : item[field];
     if (actual) { input.min = '0'; input.step = '1'; }
+    input.disabled = readonly;
     input.setAttribute('aria-label', `${actual ? 'Фактическое количество' : 'Комментарий'}: ${item.productName}, ${item.storageLocation || 'общий остаток'}`);
     const cell = document.createElement('td'); cell.append(input);
     return cell;
@@ -391,8 +504,9 @@ function renderInventoryCounts() {
 }
 
 async function saveInventoryCounts(requireAll) {
+    const user = JSON.parse(sessionStorage.getItem('user'));
     const counts = readInventoryCounts(requireAll);
-    inventoryDetails = await window.go.main.InventoryService.SaveInventoryCounts(inventoryDetails.id, counts);
+    inventoryDetails = await window.go.main.InventoryService.SaveInventoryCounts(inventoryDetails.id, counts, user.id, user.role);
 }
 
 function readInventoryCounts(requireAll) {
@@ -410,25 +524,32 @@ function readInventoryCounts(requireAll) {
 
 function renderInventoryComparison() {
     const body = byId('inventory-comparison-body'); body.replaceChildren();
+    
+    // Защита от пустой таблицы
+    if (!inventoryDetails.items || inventoryDetails.items.length === 0) {
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 7;
+        cell.className = 'text-center text-body-secondary py-4';
+        cell.textContent = 'В этой инвентаризации нет товаров.';
+        row.append(cell);
+        body.append(row);
+        return;
+    }
+
+    const canEdit = (currentUser.role === 'Менеджер' && inventoryDetails.status === 'pending' && !inventoryDetails.isApprovedByMe) || 
+                    (currentUser.role === 'Кладовщик' && inventoryDetails.status === 'draft');
+
     for (const item of inventoryDetails.items) {
         const row = document.createElement('tr');
         row.dataset.productId = item.productId;
         row.dataset.stockId = item.stockId || 0;
         const badge = document.createElement('span');
         const cell = document.createElement('td'); cell.append(badge);
-        row.append(inventoryCell(item.productName, 'fw-semibold'), inventoryCell(item.storageLocation || '-'), inventoryCell(item.systemCount, 'text-end'), inventoryInputCell(item, 'actualCount'), inventoryCell(''), cell, inventoryInputCell(item, 'comment'));
+        row.append(inventoryCell(item.productName, 'fw-semibold'), inventoryCell(item.storageLocation || '-'), inventoryCell(item.systemCount, 'text-end'), inventoryInputCell(item, 'actualCount', !canEdit), inventoryCell(''), cell, inventoryInputCell(item, 'comment', !canEdit));
         body.append(row);
     }
     updateInventoryComparison(inventoryDetails.items);
-}
-
-function refreshInventoryComparison() {
-    try {
-        const counts = readInventoryCounts(true);
-        const items = inventoryDetails.items.map((item, index) => ({ ...item, actualCount: counts[index].actualCount }));
-        updateInventoryComparison(items);
-        showStatus(byId('inventory-status'), '');
-    } catch (error) { showError(byId('inventory-status'), error); }
 }
 
 function updateInventoryComparison(items) {
@@ -439,6 +560,7 @@ function updateInventoryComparison(items) {
         if (difference < 0) { color = 'danger'; result = 'Недостача'; }
         if (difference > 0) { color = 'warning'; result = 'Излишек'; }
         const row = byId('inventory-comparison-body').children[index];
+        if (!row) return;
         row.children[4].textContent = difference > 0 ? `+${difference}` : difference;
         row.children[4].className = `text-end fw-semibold text-${color}`;
         const badge = row.children[5].children[0];
@@ -451,19 +573,8 @@ function updateInventoryComparison(items) {
     byId('inventory-total').textContent = `Итого: в системе ${totals.system} шт. · фактически ${totals.actual} шт. · расхождение ${totals.actual - totals.system} шт.`;
 }
 
-function showInventoryCorrection() {
-    const changed = inventoryDetails.items.filter((item) => item.actualCount !== item.systemCount);
-    byId('inventory-correction-title').textContent = changed.length ? `Скорректировать остатки по ${changed.length} позициям?` : 'Завершить инвентаризацию без расхождений?';
-    const body = byId('inventory-correction-body'); body.replaceChildren();
-    for (const item of changed) {
-        const row = document.createElement('tr'); const difference = item.actualCount - item.systemCount;
-        row.append(inventoryCell(`${item.productName} · ${item.storageLocation || 'общий остаток'}`), inventoryCell(item.systemCount, 'text-end'), inventoryCell(item.actualCount, 'text-end fw-semibold'), inventoryCell(difference > 0 ? `+${difference}` : difference, `text-end fw-semibold text-${difference < 0 ? 'danger' : 'success'}`)); body.append(row);
-    }
-    showStatus(byId('inventory-correction-status'), ''); showModal('inventory-correction-modal');
-}
-
 function showInventoryReport() {
     renderInventoryReport(inventoryDetails, 'inventory-report');
-    byId('inventory-back-to-compare').hidden = inventoryDetails.status === 'completed';
+    byId('inventory-back-to-compare').hidden = true;
     showInventoryStage('report');
 }

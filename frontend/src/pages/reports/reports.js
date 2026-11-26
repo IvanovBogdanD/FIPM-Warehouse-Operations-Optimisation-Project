@@ -14,11 +14,29 @@ function renderReports(reports) {
         link.textContent = inventoryNumber(report);
         number.append(link);
         row.append(number);
-        for (const value of [inventoryDate(report.date), report.responsible || 'Не указан', report.status === 'completed' ? 'Завершён' : 'Черновик']) {
+        
+        let statusText = 'Черновик';
+        if (report.status === 'completed') statusText = 'Завершён';
+        else if (report.status === 'pending') statusText = 'Ожидает подтверждения';
+
+        for (const value of [inventoryDate(report.date), report.commission || 'Не указан', statusText]) {
             const cell = document.createElement('td');
             cell.textContent = value;
             row.append(cell);
         }
+
+        const cell = document.createElement('td');
+        if (report.status === 'pending') {
+            const button = document.createElement('button');
+            button.type = 'button'; button.className = 'btn btn-outline-primary btn-sm';
+            button.textContent = 'Проверить';
+            button.addEventListener('click', () => {
+                location.hash = `#inventory/${report.id}`;
+            });
+            cell.append(button);
+        }
+        row.append(cell);
+        
         return row;
     });
     byId('reports-body').replaceChildren(...rows);
@@ -36,9 +54,12 @@ export async function loadReports(id) {
     byId('reports-act').hidden = true;
     showStatus(status, listing ? 'Загрузка отчётов…' : 'Загрузка акта…');
 
+    const userStr = sessionStorage.getItem('user');
+    const user = userStr ? JSON.parse(userStr) : { id: 0, role: 'Гость' };
+
     try {
         const service = window.go.main.InventoryService;
-        const result = await (listing ? service.GetInventoryReports() : service.GetInventoryReport(id));
+        const result = await (listing ? service.GetInventoryReports(user.id, user.role) : service.GetInventoryReport(id, user.id, user.role));
         if (request !== reportsRequest) return;
         if (listing) {
             renderReports(result);

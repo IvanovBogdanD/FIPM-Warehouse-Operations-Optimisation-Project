@@ -56,12 +56,20 @@ func (i *InventoryService) initInventoryReports() error {
 	return tx.Commit()
 }
 
-func (i *InventoryService) GenerateInventoryReport(id int) (InventoryDetails, error) {
+func (i *InventoryService) GenerateInventoryReport(id int, userID int) (InventoryDetails, error) {
 	tx, err := i.db.Begin()
 	if err != nil {
 		return InventoryDetails{}, err
 	}
 	defer tx.Rollback()
+
+	var status string
+	if err := tx.QueryRow("SELECT status FROM inventories WHERE id=?", id).Scan(&status); err != nil {
+		return InventoryDetails{}, err
+	}
+	if status == "draft" {
+		return InventoryDetails{}, errors.New("нельзя сформировать акт до отправки на проверку")
+	}
 
 	details, err := saveInventoryReport(tx, id)
 	if err != nil {
@@ -74,7 +82,7 @@ func (i *InventoryService) GenerateInventoryReport(id int) (InventoryDetails, er
 }
 
 func saveInventoryReport(tx *sql.Tx, id int) (InventoryDetails, error) {
-	details, err := readInventoryDetails(tx, id)
+	details, err := readInventoryDetails(tx, id, 0)
 	if err != nil {
 		return InventoryDetails{}, err
 	}
@@ -94,7 +102,7 @@ func saveInventoryReport(tx *sql.Tx, id int) (InventoryDetails, error) {
 	result, err := tx.Exec(`
 		INSERT INTO inventory_reports (inventory_id, document) VALUES (?, ?)
 		ON CONFLICT(inventory_id) DO UPDATE SET document = excluded.document
-		WHERE json_extract(inventory_reports.document, '$.status') = 'draft'
+		WHERE json_extract(inventory_reports.document, '$.status') != 'completed'
 	`, id, string(document))
 	if err != nil {
 		return InventoryDetails{}, fmt.Errorf("сохранение акта инвентаризации: %w", err)
@@ -109,8 +117,25 @@ func saveInventoryReport(tx *sql.Tx, id int) (InventoryDetails, error) {
 	return details, nil
 }
 
-func (i *InventoryService) GetInventoryReport(id int) (InventoryDetails, error) {
-	return readInventoryReport(i.db, id)
+func (i *InventoryService) GetInventoryReport(id int, userID int, role string) (InventoryDetails, error) {
+	details, err := readInventoryReport(i.db, id)
+	if err != nil {
+		return InventoryDetails{}, err
+	}
+	// Блокируем доступ только менеджерам, которые не входят в комиссию
+	if role == "Менеджер" && userID != 0 {
+		var isMember bool
+		for _, m := range details.CommissionManagers {
+			if m.ID == userID {
+				isMember = true
+				break
+			}
+		}
+		if !isMember {
+			return InventoryDetails{}, errors.New("у вас нет доступа к этому акту")
+		}
+	}
+	return details, nil
 }
 
 func readInventoryReport(db databaseReader, id int) (InventoryDetails, error) {
@@ -126,12 +151,19 @@ func readInventoryReport(db databaseReader, id int) (InventoryDetails, error) {
 	return details, err
 }
 
-func (i *InventoryService) GetInventoryReports() ([]Inventory, error) {
-	rows, err := i.db.Query(`
-		SELECT json_remove(document, '$.items')
-		FROM inventory_reports
-		ORDER BY inventory_id DESC
-	`)
+func (i *InventoryService) GetInventoryReports(userID int, role string) ([]Inventory, error) {
+	var query string
+	args := []any{}
+	if role == "Менеджер" {
+		query = `SELECT json_remove(document, '$.items') FROM inventory_reports 
+		         WHERE EXISTS (SELECT 1 FROM json_each(json_extract(document, '$.commissionManagers')) WHERE json_extract(value, '$.id') = ?)
+		         ORDER BY inventory_id DESC`
+		args = append(args, userID)
+	} else {
+		query = `SELECT json_remove(document, '$.items') FROM inventory_reports ORDER BY inventory_id DESC`
+	}
+
+	rows, err := i.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +184,7 @@ func (i *InventoryService) GetInventoryReports() ([]Inventory, error) {
 }
 
 func (i *InventoryService) SaveInventoryPDF(id int, encoded string, print bool) (string, error) {
-	if _, err := readInventory(i.db, id); err != nil {
+	if _, err := readInventory(i.db, id, 0); err != nil {
 		return "", err
 	}
 	data, err := base64.StdEncoding.DecodeString(encoded)

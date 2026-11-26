@@ -42,7 +42,7 @@ func (i *InventoryService) initInventoryCells() error {
 	return tx.Commit()
 }
 
-func (i *InventoryService) prepareInventoryCells(id int, request InventoryParameters) (InventoryDetails, error) {
+func (i *InventoryService) prepareInventoryCells(id int, request InventoryParameters, userID int) (InventoryDetails, error) {
 	if request.Kind == "partial" && len(request.StockIDs) == 0 {
 		return InventoryDetails{}, errors.New("выберите товары в ячейках для проверки")
 	}
@@ -131,10 +131,10 @@ func (i *InventoryService) prepareInventoryCells(id int, request InventoryParame
 	if err := tx.Commit(); err != nil {
 		return InventoryDetails{}, err
 	}
-	return i.GetInventory(id)
+	return i.GetInventory(id, userID)
 }
 
-func (i *InventoryService) DeleteInventoryCell(inventoryID, stockID int) (InventoryDetails, error) {
+func (i *InventoryService) DeleteInventoryCell(inventoryID, stockID, userID int) (InventoryDetails, error) {
 	result, err := i.db.Exec(`DELETE FROM inventory_items WHERE inventory_id=? AND stock_id=?
 		AND EXISTS(SELECT 1 FROM inventories WHERE id=? AND status='draft')`, inventoryID, stockID, inventoryID)
 	if err != nil {
@@ -147,7 +147,7 @@ func (i *InventoryService) DeleteInventoryCell(inventoryID, stockID int) (Invent
 	if count == 0 {
 		return InventoryDetails{}, errors.New("позиция не найдена или инвентаризация завершена")
 	}
-	return i.GetInventory(inventoryID)
+	return i.GetInventory(inventoryID, userID)
 }
 
 func applyInventoryCells(tx *sql.Tx, id int) error {

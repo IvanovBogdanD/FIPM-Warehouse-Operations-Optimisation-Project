@@ -24,7 +24,7 @@
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0">
         <thead class="table-light">
-          <tr><th>Номер</th><th>Дата проведения</th><th>Проводит</th><th>Статус</th><th></th></tr>
+          <tr><th>Номер</th><th>Дата проведения</th><th>Комиссия</th><th>Статус</th><th></th></tr>
         </thead>
         <tbody id="inventory-history-body"></tbody>
       </table>
@@ -67,11 +67,9 @@
           <h2 class="h5 fw-semibold mb-3">Параметры</h2>
           <label class="form-label fw-semibold" for="inventory-date">Дата проведения <span class="text-danger">*</span></label><input id="inventory-date" class="form-control mb-3" type="date" required>
           <div class="mb-3">
-            <label class="form-label fw-semibold" for="inventory-responsible">Ответственные менеджеры <span class="text-danger">*</span></label>
-            {{inventory-responsible}}
+            <label class="form-label fw-semibold" for="inventory-commission-toggle">Члены комиссии <span class="text-danger">*</span></label>
+            {{inventory-commission-toggle}}
           </div>
-          <label class="form-label fw-semibold" for="inventory-commission-toggle">Члены комиссии</label>
-          {{inventory-commission-toggle}}
           <fieldset class="border-0 p-0 mt-4"><legend class="form-label fw-semibold fs-6">Тип</legend><div class="form-check form-check-inline"><input id="inventory-kind-partial" class="form-check-input" type="radio" name="inventory-kind" value="partial" checked><label class="form-check-label" for="inventory-kind-partial">Выборочная</label></div><div class="form-check form-check-inline"><input id="inventory-kind-full" class="form-check-input" type="radio" name="inventory-kind" value="full"><label class="form-check-label" for="inventory-kind-full">Полная</label></div></fieldset>
         </div></div>
         <p class="alert alert-warning">На этапе подсчёта остатки не меняются. Корректировка применяется после сверки и подтверждения.</p><button id="inventory-start-count" class="btn btn-primary w-100" type="button">Начать подсчёт</button>
@@ -109,13 +107,13 @@
       </div>
       <div class="card shadow-none border"><div class="table-responsive"><table class="table align-middle mb-0"><thead class="table-light"><tr><th>Товар</th><th>Место хранения</th><th class="text-end">В системе</th><th class="text-end">Фактически</th><th class="text-end">Расхождение</th><th>Результат</th><th>Комментарий</th></tr></thead><tbody id="inventory-comparison-body"></tbody></table></div><div id="inventory-total" class="card-footer bg-body text-body-secondary py-3"></div></div>
       
-      <!-- Панель действий на этапе сверки -->
       <div class="row g-3 align-items-center mt-3">
-        <div class="col-xl-5"><p class="alert alert-primary mb-0">Корректировка приведёт количество в системе к фактическому.</p></div>
+        <div class="col-xl-5"><p id="inventory-reconciliation-hint" class="alert alert-primary mb-0">Корректировка приведёт количество в системе к фактическому.</p></div>
         <div class="col-xl-7 d-flex flex-wrap justify-content-xl-end align-items-center gap-2">
           <button id="inventory-back-count" class="btn btn-outline-secondary me-auto" type="button">← К подсчёту</button>
           <button id="inventory-save-compare" class="btn btn-outline-secondary" type="button">Сохранить</button>
-          <button id="btn-apply-inventory" class="btn btn-primary" type="button">Скорректировать остатки</button>
+          <button id="inventory-submit-review" class="btn btn-primary" type="button" style="display: none;">Отправить на проверку</button>
+          <button id="inventory-approve" class="btn btn-success" type="button" style="display: none;">Подтвердить</button>
           <button id="inventory-open-report" class="btn btn-outline-secondary" type="button">Сформировать акт</button>
         </div>
       </div>
@@ -134,7 +132,18 @@
     <button id="inventory-show-history" class="btn btn-link px-0 mt-3" type="button">Все инвентаризации</button>
   </div>
 </section>
-<div id="inventory-correction-modal" class="modal fade" tabindex="-1" aria-labelledby="inventory-correction-title" aria-hidden="true"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">
-  <div class="modal-header"><h2 id="inventory-correction-title" class="modal-title h5"></h2></div><div class="modal-body"><p>Количество в системе будет заменено фактическим. Дата и результаты сохранятся в инвентаризации.</p><div class="table-responsive"><table class="table align-middle"><thead class="table-light"><tr><th>Товар</th><th class="text-end">Было в системе</th><th class="text-end">Станет</th><th class="text-end">Коррекция</th></tr></thead><tbody id="inventory-correction-body"></tbody></table></div><p id="inventory-correction-status" role="status" aria-live="polite"></p></div>
-  <div class="modal-footer"><button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Отмена</button><button id="inventory-correction-confirm" class="btn btn-primary" type="button">Скорректировать</button></div>
-</div></div></div>
+<div id="inventory-submitted-modal" class="modal fade" tabindex="-1" aria-labelledby="inventory-submitted-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="inventory-submitted-title" class="modal-title h5">Инвентаризация отправлена</h2>
+      </div>
+      <div class="modal-body">
+        <p>Инвентаризация отправлена на проверку всем членам комиссии. Изменение данных стало недоступным.</p>
+      </div>
+      <div class="modal-footer">
+        <button id="inventory-submitted-ok" class="btn btn-primary" type="button">ОК</button>
+      </div>
+    </div>
+  </div>
+</div>

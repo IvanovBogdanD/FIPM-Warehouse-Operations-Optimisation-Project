@@ -23,12 +23,15 @@ function updateMenuVisibility(role) {
     } 
     else if (role === 'Кладовщик') {
         if (byId('nav-inventory')) byId('nav-inventory').classList.remove('d-none');
+        if (byId('nav-analytics')) byId('nav-analytics').classList.remove('d-none');
+        if (byId('nav-analytics-header')) byId('nav-analytics-header').classList.remove('d-none');
     } 
     else if (role === 'Менеджер') {
         if (byId('nav-home')) byId('nav-home').classList.remove('d-none');
         if (byId('nav-products')) byId('nav-products').classList.remove('d-none');
-        byId('nav-warehouse').classList.remove('d-none');
+        if (byId('nav-warehouse')) byId('nav-warehouse').classList.remove('d-none');
         if (byId('nav-orders')) byId('nav-orders').classList.remove('d-none');
+        if (byId('nav-inventory')) byId('nav-inventory').classList.remove('d-none'); // Добавлена вкладка
         if (byId('nav-analytics')) byId('nav-analytics').classList.remove('d-none');
         if (byId('nav-analytics-header')) byId('nav-analytics-header').classList.remove('d-none');
     }
@@ -52,13 +55,11 @@ async function route() {
 
     const user = JSON.parse(userStr);
 
-    // Дефолтный маршрут по роли после входа
     if (location.hash === '#auth' || location.hash === '') {
         location.hash = (user.role === 'Кладовщик') ? '#inventory' : '#home';
         return;
     }
 
-    // Карточка пользователя внизу сайдбара
     const userNameEl = byId('sidebar-user-name');
     const userRoleEl = byId('sidebar-user-role');
     const userInitialEl = byId('sidebar-user-initial');
@@ -72,27 +73,28 @@ async function route() {
 
     const hash = location.hash.slice(1) || 'home';
     const reportMatch = /^reports(?:\/(\d+))?$/.exec(hash);
+    const inventoryMatch = /^inventory(?:\/(\d+))?$/.exec(hash);
 
     if (user.role === 'Кладовщик') {
-        if (hash !== 'inventory') {
+        if (hash !== 'inventory' && !hash.startsWith('inventory/') && !hash.startsWith('reports')) {
             location.hash = '#inventory';
             return;
         }
     } 
     else if (user.role === 'Администратор') {
-        if (['products', 'product', 'warehouse', 'orders', 'orders/new', 'orders/new/writeoff', 'receiving', 'inventory'].includes(hash)) {
+        if (['products', 'product', 'warehouse', 'orders', 'orders/new', 'orders/new/writeoff', 'receiving', 'inventory'].includes(hash) || hash.startsWith('inventory/') || hash.startsWith('reports')) {
             location.hash = '#users';
             return;
         }
     } 
     else if (user.role === 'Менеджер') {
-        if (['inventory', 'users'].includes(hash)) {
+        if (['users'].includes(hash)) {
             location.hash = '#home';
             return;
         }
     }
 
-    if (reportMatch && user.role !== 'Менеджер') {
+    if (reportMatch && user.role !== 'Менеджер' && user.role !== 'Кладовщик') {
         location.hash = '#home';
         return;
     }
@@ -110,7 +112,7 @@ async function route() {
     if (orderFormMatch) page = 'order-form';
     if (hash === 'orders/receiving' || hash === 'receiving') page = 'receiving';
     if (hash === 'users') page = 'users';
-    if (hash === 'inventory') page = 'inventory';
+    if (inventoryMatch) page = 'inventory';
 
     const titles = {
         home: 'Главная', catalog: 'Товары', product: 'Товары / Карточка товара',
@@ -127,6 +129,7 @@ async function route() {
     let activeHash = `#${page}`;
     if (page === 'catalog' || page === 'product') activeHash = '#products';
     if (page === 'orders' || page === 'order-form' || page === 'receiving') activeHash = '#orders';
+    if (page === 'inventory') activeHash = '#inventory';
 
     document.querySelectorAll('.sidebar-menu a.nav-link').forEach((link) => {
         const active = link.hash === activeHash;
@@ -142,7 +145,7 @@ async function route() {
     if (page === 'order-form') await loadOrderForm(orderFormMatch[1] ? 'writeoff' : 'shipment');
     if (page === 'receiving') await loadReceiving();
     if (page === 'users') await loadUsers();
-    if (page === 'inventory') await loadInventory();
+    if (page === 'inventory') await loadInventory(inventoryMatch && inventoryMatch[1] ? Number(inventoryMatch[1]) : null);
     if (page === 'warehouse') await loadWarehouse();
     if (page === 'reports') await loadReports(reportMatch[1] ? Number(reportMatch[1]) : null);
 }

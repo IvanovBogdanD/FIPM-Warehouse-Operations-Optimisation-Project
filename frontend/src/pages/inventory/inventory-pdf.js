@@ -3,6 +3,7 @@ import { inventoryNumber, inventoryDate, inventorySigners, inventoryTotals } fro
 
 export function createInventoryPDF(details, font) {
     const totals = inventoryTotals(details);
+    const completed = details.status === 'completed';
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
     pdf.addFileToVFS('Nunito.ttf', font);
     pdf.addFont('Nunito.ttf', 'Nunito', 'normal');
@@ -21,7 +22,8 @@ export function createInventoryPDF(details, font) {
         if (y + lines.length * 5 > 280) { pdf.addPage(); y = 18; }
         pdf.text(lines, 12, y); y += lines.length * 5 + 3;
     };
-    paragraph(`Ответственные — ${details.responsible || 'не указаны'}. Комиссия — ${details.commission || 'не указана'}.`);
+    
+    paragraph(`Комиссия — ${details.commission || 'не указана'}.`);
     paragraph(`Проведена ${details.kind === 'full' ? 'полная' : 'выборочная'} инвентаризация товаров. Результаты:`);
     const widths = [8, 58, 20, 24, 19, 19, 19, 19];
     const header = ['№', 'Наименование', 'Артикул', 'Место хранения', 'Учёт, шт.', 'Факт, шт.', 'Недостача', 'Излишек'];
@@ -42,7 +44,9 @@ export function createInventoryPDF(details, font) {
     drawRow(['', 'Итого', '', '', totals.system, totals.actual, totals.shortage, totals.surplus]);
     y += 10;
     pdf.setFontSize(10);
-    paragraph(details.status === 'completed' ? `Остатки в системе скорректированы по фактическим данным. Дата проведения: ${inventoryDate(details.date)}.` : 'Черновик акта. Корректировка остатков ещё не применена.');
+    
+    paragraph(completed ? `Остатки в системе скорректированы по фактическим данным. Дата проведения: ${inventoryDate(details.date)}.` : 'Не все члены комиссии закончили проверку.');
+    
     for (const item of details.items.filter((item) => item.comment)) paragraph(`${item.productName}: ${item.comment}`);
     for (const person of inventorySigners(details)) { y += 8; paragraph(`${person} · Подпись ____________________`); }
     return pdf;

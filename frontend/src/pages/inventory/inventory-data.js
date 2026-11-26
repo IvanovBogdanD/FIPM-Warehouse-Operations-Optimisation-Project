@@ -8,8 +8,15 @@ export function inventoryDate(value) {
 }
 
 export function inventorySigners(details) {
-    const managers = details.responsibleManagers?.length ? details.responsibleManagers.map((manager) => manager.name) : [details.responsible];
-    return [...managers, ...details.commission.split(', ')].filter(Boolean);
+    // Если завершена - показываем всех (они все подтвердили)
+    if (details.status === 'completed') {
+        return details.commissionManagers?.map((manager) => manager.name) || [];
+    }
+    // Если на проверке - показываем только тех, чей ID есть в approvedManagerIds
+    if (details.status === 'pending' && details.approvedManagerIds) {
+        return details.commissionManagers?.filter((manager) => details.approvedManagerIds.includes(manager.id)).map((manager) => manager.name) || [];
+    }
+    return [];
 }
 
 export function inventoryTotals(details) {

@@ -6,11 +6,15 @@ export function renderInventoryReport(details, prefix) {
     const field = (name) => byId(`${prefix}-${name}`);
     const totals = inventoryTotals(details);
     const completed = details.status === 'completed';
-    field('status').textContent = completed ? 'Инвентаризация завершена' : 'Черновик акта';
-    field('status').className = `badge text-bg-${completed ? 'success' : 'warning'}`;
+    const pending = details.status === 'pending';
+    
+    field('status').textContent = completed ? 'Инвентаризация завершена' : (pending ? 'Ожидает подтверждения' : 'Черновик');
+    field('status').className = `badge text-bg-${completed ? 'success' : (pending ? 'warning' : 'secondary')}`;
     field('title').textContent = `АКТ ИНВЕНТАРИЗАЦИИ № ${inventoryNumber(details)}`;
     field('date').textContent = `от ${inventoryDate(details.date)}`;
-    field('people').textContent = `Ответственные — ${details.responsible || 'не указаны'}. Комиссия — ${details.commission || 'не указана'}. Вид проверки — ${details.kind === 'full' ? 'полная' : 'выборочная'}.`;
+    
+    field('people').textContent = `Комиссия — ${details.commission || 'не указана'}. Вид проверки — ${details.kind === 'full' ? 'полная' : 'выборочная'}.`;
+    
     const body = field('body'); body.replaceChildren();
     details.items.forEach((item, index) => {
         const difference = item.actualCount - item.systemCount;
@@ -24,7 +28,9 @@ export function renderInventoryReport(details, prefix) {
     const label = document.createElement('th'); label.colSpan = 4; label.textContent = 'Итого'; total.append(label);
     for (const value of [totals.system, totals.actual, totals.shortage, totals.surplus]) { const cell = document.createElement('th'); cell.textContent = value; total.append(cell); }
     field('total').replaceChildren(total);
-    field('result').textContent = completed ? `Остатки в системе скорректированы по фактическим данным. Дата проведения: ${inventoryDate(details.date)}.` : 'Корректировка остатков ещё не применена.';
+    
+    field('result').textContent = completed ? `Остатки в системе скорректированы по фактическим данным. Дата проведения: ${inventoryDate(details.date)}.` : 'Не все члены комиссии закончили проверку.';
+    
     const signatures = field('signatures'); signatures.replaceChildren();
     for (const person of inventorySigners(details)) {
         const line = document.createElement('p'); line.className = 'border-top pt-2 mt-5';
