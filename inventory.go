@@ -19,17 +19,71 @@ func NewInventoryService(db *sql.DB) *InventoryService {
 }
 
 func (i *InventoryService) InitSchema() error {
+	// --- БЕЗОПАСНАЯ МИГРАЦИЯ СУЩЕСТВУЮЩЕЙ ТАБЛИЦЫ ---
+	var tableSql string
+	_ = i.db.QueryRow("SELECT COALESCE(sql, '') FROM sqlite_master WHERE type='table' AND name='inventories'").Scan(&tableSql)
+	
+	if tableSql != "" && !strings.Contains(tableSql, "'pending'") {
+		if _, err := i.db.Exec("PRAGMA foreign_keys=OFF"); err != nil { return err }
+
+		tx, err := i.db.Begin()
+		if err != nil { return err }
+		
+		if _, err := tx.Exec("ALTER TABLE inventories RENAME TO inventories_old_migration"); err != nil { tx.Rollback(); return err }
+
+		if _, err := tx.Exec(`
+			CREATE TABLE inventories (
+				id           INTEGER PRIMARY KEY AUTOINCREMENT,
+				status       TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'completed')),
+				created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+				completed_at TEXT,
+				inventory_date TEXT NOT NULL DEFAULT '',
+				commission_managers TEXT NOT NULL DEFAULT '[]',
+				commission TEXT NOT NULL DEFAULT '',
+				kind TEXT NOT NULL DEFAULT 'partial',
+				by_cells INTEGER NOT NULL DEFAULT 0
+			)
+		`); err != nil { tx.Rollback(); return err }
+
+		rows, err := tx.Query("SELECT name FROM pragma_table_info('inventories_old_migration')")
+		if err != nil { tx.Rollback(); return err }
+		oldCols := make(map[string]bool)
+		for rows.Next() {
+			var col string
+			rows.Scan(&col)
+			oldCols[col] = true
+		}
+		rows.Close()
+
+		var insertCols []string
+		allCols := []string{"id", "status", "created_at", "completed_at", "inventory_date", "commission_managers", "commission", "kind", "by_cells"}
+		for _, col := range allCols {
+			if oldCols[col] {
+				insertCols = append(insertCols, col)
+			}
+		}
+
+		if len(insertCols) > 0 {
+			query := fmt.Sprintf("INSERT INTO inventories (%s) SELECT %s FROM inventories_old_migration", strings.Join(insertCols, ","), strings.Join(insertCols, ","))
+			if _, err := tx.Exec(query); err != nil { tx.Rollback(); return err }
+		}
+
+		if _, err := tx.Exec("DROP TABLE inventories_old_migration"); err != nil { tx.Rollback(); return err }
+		
+		if err := tx.Commit(); err != nil { return err }
+		if _, err := i.db.Exec("PRAGMA foreign_keys=ON"); err != nil { return err }
+	}
+
+	// Создание таблиц (если их нет)
 	_, err := i.db.Exec(`
 		CREATE TABLE IF NOT EXISTS inventories (
 			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			status       TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'completed')),
+			status       TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'completed')),
 			created_at   TEXT NOT NULL DEFAULT (datetime('now')),
 			completed_at TEXT
 		)
 	`)
-	if err != nil {
-		return fmt.Errorf("create inventories table: %w", err)
-	}
+	if err != nil { return fmt.Errorf("create inventories table: %w", err) }
 
 	_, err = i.db.Exec(`
 		CREATE TABLE IF NOT EXISTS inventory_items (
@@ -43,21 +97,27 @@ func (i *InventoryService) InitSchema() error {
 			FOREIGN KEY (product_id) REFERENCES products(id)
 		)
 	`)
-	if err != nil {
-		return fmt.Errorf("create inventory_items table: %w", err)
-	}
+	if err != nil { return fmt.Errorf("create inventory_items table: %w", err) }
 
 	_, err = i.db.Exec(`
 		CREATE INDEX IF NOT EXISTS idx_inventory_items_inventory_id
 		ON inventory_items(inventory_id)
 	`)
-	if err != nil {
-		return fmt.Errorf("create inventory_items index: %w", err)
-	}
+	if err != nil { return fmt.Errorf("create inventory_items index: %w", err) }
+
+	_, err = i.db.Exec(`
+		CREATE TABLE IF NOT EXISTS inventory_approvals (
+			inventory_id INTEGER NOT NULL REFERENCES inventories(id) ON DELETE CASCADE,
+			manager_id   INTEGER NOT NULL REFERENCES users(id),
+			approved_at  TEXT NOT NULL DEFAULT (datetime('now')),
+			PRIMARY KEY (inventory_id, manager_id)
+		)
+	`)
+	if err != nil { return fmt.Errorf("create inventory_approvals table: %w", err) }
+
 	for _, column := range []struct{ table, name, definition string }{
 		{"inventories", "inventory_date", "TEXT NOT NULL DEFAULT ''"},
-		{"inventories", "responsible", "TEXT NOT NULL DEFAULT ''"},
-		{"inventories", "responsible_managers", "TEXT NOT NULL DEFAULT '[]'"},
+		{"inventories", "commission_managers", "TEXT NOT NULL DEFAULT '[]'"},
 		{"inventories", "commission", "TEXT NOT NULL DEFAULT ''"},
 		{"inventories", "kind", "TEXT NOT NULL DEFAULT 'partial'"},
 		{"inventories", "by_cells", "INTEGER NOT NULL DEFAULT 0"},
@@ -74,9 +134,7 @@ func (i *InventoryService) InitSchema() error {
 		}
 	}
 
-	if err := i.initInventoryCells(); err != nil {
-		return err
-	}
+	if err := i.initInventoryCells(); err != nil { return err }
 	return i.initInventoryReports()
 }
 
@@ -87,10 +145,12 @@ type Inventory struct {
 	CreatedAt           string     `json:"createdAt"`
 	CompletedAt         string     `json:"completedAt"`
 	Date                string     `json:"date"`
-	Responsible         string     `json:"responsible"`
-	ResponsibleManagers []Employee `json:"responsibleManagers"`
+	CommissionManagers  []Employee `json:"commissionManagers"`
 	Commission          string     `json:"commission"`
 	Kind                string     `json:"kind"`
+	IsApprovedByMe      bool       `json:"isApprovedByMe"`
+	WaitForOtherApprove bool       `json:"waitForOtherApprove"`
+	ApprovedManagerIDs  []int      `json:"approvedManagerIds"`
 }
 
 type InventoryItem struct {
@@ -112,38 +172,57 @@ type InventoryDetails struct {
 	Items []InventoryItem `json:"items"`
 }
 
-func (i *InventoryService) CreateInventory() (Inventory, error) {
+func (i *InventoryService) CreateInventory(userID int, role string) (Inventory, error) {
+	if role != "Кладовщик" {
+		return Inventory{}, errors.New("только кладовщик может создавать инвентаризацию")
+	}
 	res, err := i.db.Exec(`INSERT INTO inventories (status) VALUES ('draft')`)
 	if err != nil {
 		return Inventory{}, fmt.Errorf("create inventory: %w", err)
 	}
-
 	id, err := res.LastInsertId()
 	if err != nil {
 		return Inventory{}, fmt.Errorf("get inventory id: %w", err)
 	}
-
-	return readInventory(i.db, int(id))
+	return readInventory(i.db, int(id), userID)
 }
 
-const inventoryColumns = "id,status,created_at,COALESCE(completed_at,''),inventory_date,responsible,responsible_managers,commission,kind,by_cells"
+const inventoryColumns = "id,status,created_at,COALESCE(completed_at,''),inventory_date,commission_managers,commission,kind,by_cells"
 
 func scanInventory(row interface{ Scan(...any) error }) (Inventory, error) {
 	var inv Inventory
 	var managers []byte
-	if err := row.Scan(&inv.ID, &inv.Status, &inv.CreatedAt, &inv.CompletedAt, &inv.Date, &inv.Responsible, &managers, &inv.Commission, &inv.Kind, &inv.ByCells); err != nil {
+	if err := row.Scan(&inv.ID, &inv.Status, &inv.CreatedAt, &inv.CompletedAt, &inv.Date, &managers, &inv.Commission, &inv.Kind, &inv.ByCells); err != nil {
 		return Inventory{}, err
 	}
-	if err := json.Unmarshal(managers, &inv.ResponsibleManagers); err != nil {
-		return Inventory{}, fmt.Errorf("чтение ответственных за инвентаризацию: %w", err)
-	}
-	if len(inv.ResponsibleManagers) > 0 {
-		inv.Responsible = managerNames(inv.ResponsibleManagers)
+	if err := json.Unmarshal(managers, &inv.CommissionManagers); err != nil {
+		return Inventory{}, fmt.Errorf("чтение комиссии: %w", err)
 	}
 	return inv, nil
 }
 
-func readInventory(db databaseReader, id int) (Inventory, error) {
+func populateApprovals(db databaseReader, inv *Inventory, userID int) {
+	inv.WaitForOtherApprove = false
+	inv.IsApprovedByMe = false
+	if inv.Status == "pending" || inv.Status == "completed" {
+		rows, err := db.Query("SELECT manager_id FROM inventory_approvals WHERE inventory_id=?", inv.ID)
+		if err == nil {
+			inv.ApprovedManagerIDs = make([]int, 0)
+			for rows.Next() {
+				var mid int
+				rows.Scan(&mid)
+				inv.ApprovedManagerIDs = append(inv.ApprovedManagerIDs, mid)
+				if mid == userID { inv.IsApprovedByMe = true }
+			}
+			rows.Close()
+		}
+		if inv.IsApprovedByMe && len(inv.ApprovedManagerIDs) < len(inv.CommissionManagers) && inv.Status == "pending" {
+			inv.WaitForOtherApprove = true
+		}
+	}
+}
+
+func readInventory(db databaseReader, id int, userID int) (Inventory, error) {
 	inv, err := scanInventory(db.QueryRow("SELECT "+inventoryColumns+" FROM inventories WHERE id = ?", id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return inv, errors.New("inventory not found")
@@ -151,74 +230,149 @@ func readInventory(db databaseReader, id int) (Inventory, error) {
 	if err != nil {
 		return inv, fmt.Errorf("get inventory: %w", err)
 	}
-
+	populateApprovals(db, &inv, userID)
 	return inv, nil
 }
 
-func (i *InventoryService) AddInventoryItems(inventoryID int, productIDs []int) error {
-	if len(productIDs) == 0 {
-		return errors.New("product ids are empty")
+func (i *InventoryService) SubmitForReview(inventoryID int, userID int, role string) error {
+	if role != "Кладовщик" {
+		return errors.New("только кладовщик может отправить на проверку")
 	}
-
 	tx, err := i.db.Begin()
-	if err != nil {
-		return fmt.Errorf("begin add inventory items: %w", err)
-	}
+	if err != nil { return err }
 	defer tx.Rollback()
 
 	var status string
-	var byCells bool
-	err = tx.QueryRow(`SELECT status,by_cells FROM inventories WHERE id = ?`, inventoryID).Scan(&status, &byCells)
-	if errors.Is(err, sql.ErrNoRows) {
-		return errors.New("inventory not found")
-	}
-	if err != nil {
-		return fmt.Errorf("get inventory status: %w", err)
+	if err := tx.QueryRow("SELECT status FROM inventories WHERE id=?", inventoryID).Scan(&status); err != nil {
+		return err
 	}
 	if status != "draft" {
-		return errors.New("inventory is not draft")
+		return errors.New("инвентаризация не в статусе черновика")
 	}
 
+	if _, err := tx.Exec("UPDATE inventories SET status='pending' WHERE id=?", inventoryID); err != nil {
+		return err
+	}
+	if _, err := saveInventoryReport(tx, inventoryID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (i *InventoryService) ApproveInventory(inventoryID int, managerID int, role string) error {
+	if role != "Менеджер" {
+		return errors.New("только менеджер может подтверждать")
+	}
+	tx, err := i.db.Begin()
+	if err != nil { return err }
+	defer tx.Rollback()
+
+	var commissionData []byte
+	var status string
+	if err := tx.QueryRow("SELECT status, commission_managers FROM inventories WHERE id=?", inventoryID).Scan(&status, &commissionData); err != nil {
+		return err
+	}
+	if status != "pending" {
+		return errors.New("инвентаризация не ожидает подтверждения")
+	}
+
+	var managers []Employee
+	if err := json.Unmarshal(commissionData, &managers); err != nil { return err }
+
+	var isMember bool
+	for _, m := range managers {
+		if m.ID == managerID { isMember = true; break }
+	}
+	if !isMember {
+		return errors.New("вы не являетесь членом комиссии этой инвентаризации")
+	}
+
+	if _, err := tx.Exec("INSERT INTO inventory_approvals(inventory_id, manager_id) VALUES(?,?) ON CONFLICT DO NOTHING", inventoryID, managerID); err != nil {
+		return err
+	}
+
+	var approvedCount int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM inventory_approvals WHERE inventory_id=?", inventoryID).Scan(&approvedCount); err != nil {
+		return err
+	}
+
+	if approvedCount >= len(managers) {
+		if err := applyInventory(tx, inventoryID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec("UPDATE inventories SET status='completed', completed_at=datetime('now') WHERE id=?", inventoryID); err != nil {
+			return err
+		}
+		if _, err := saveInventoryReport(tx, inventoryID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func applyInventory(tx *sql.Tx, inventoryID int) error {
+	var byCells bool
+	if err := tx.QueryRow("SELECT by_cells FROM inventories WHERE id=?", inventoryID).Scan(&byCells); err != nil {
+		return err
+	}
 	if byCells {
-		return errors.New("для этой инвентаризации выберите позиции ячеек через PrepareInventory")
+		if err := applyInventoryCells(tx, inventoryID); err != nil { return err }
+	} else {
+		if err := applyLegacyInventoryStock(tx, inventoryID); err != nil { return err }
+		_, err := tx.Exec(`
+		UPDATE products
+		SET count = (
+			SELECT ii.actual_count FROM inventory_items ii
+			WHERE ii.inventory_id = ? AND ii.product_id = products.id
+		)
+		WHERE id IN (SELECT product_id FROM inventory_items WHERE inventory_id = ?)
+	`, inventoryID, inventoryID)
+		if err != nil { return fmt.Errorf("update product counts: %w", err) }
 	}
-
-	for _, productID := range productIDs {
-		var systemCount int
-		err = tx.QueryRow(`SELECT count FROM products WHERE id = ?`, productID).Scan(&systemCount)
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("product %d not found", productID)
-		}
-		if err != nil {
-			return fmt.Errorf("get product count: %w", err)
-		}
-
-		_, err = tx.Exec(`
-			INSERT INTO inventory_items (inventory_id, product_id, system_count)
-			VALUES (?, ?, ?)
-			ON CONFLICT DO NOTHING
-		`, inventoryID, productID, systemCount)
-		if err != nil {
-			return fmt.Errorf("insert inventory item: %w", err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit add inventory items: %w", err)
-	}
-
 	return nil
 }
 
-func (i *InventoryService) GetInventory(inventoryID int) (InventoryDetails, error) {
-	return readInventoryDetails(i.db, inventoryID)
+func (i *InventoryService) GetInventories(userID int, role string) ([]Inventory, error) {
+	var query string
+	args := []any{}
+	if role == "Менеджер" {
+		query = "SELECT " + inventoryColumns + " FROM inventories WHERE EXISTS (SELECT 1 FROM json_each(commission_managers) WHERE json_extract(value, '$.id') = ?) ORDER BY id DESC"
+		args = append(args, userID)
+	} else {
+		query = "SELECT " + inventoryColumns + " FROM inventories ORDER BY id DESC"
+	}
+
+	rows, err := i.db.Query(query, args...)
+	if err != nil { return nil, err }
+	
+	inventories := []Inventory{}
+	for rows.Next() {
+		inv, err := scanInventory(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		inventories = append(inventories, inv)
+	}
+	err = rows.Err()
+	rows.Close()
+	
+	if err != nil { return nil, err }
+
+	for idx := range inventories {
+		populateApprovals(i.db, &inventories[idx], userID)
+	}
+
+	return inventories, nil
 }
 
-func readInventoryDetails(db databaseReader, inventoryID int) (InventoryDetails, error) {
-	inv, err := readInventory(db, inventoryID)
-	if err != nil {
-		return InventoryDetails{}, err
-	}
+func (i *InventoryService) GetInventory(inventoryID int, userID int) (InventoryDetails, error) {
+	return readInventoryDetails(i.db, inventoryID, userID)
+}
+
+func readInventoryDetails(db databaseReader, inventoryID int, userID int) (InventoryDetails, error) {
+	inv, err := readInventory(db, inventoryID, userID)
+	if err != nil { return InventoryDetails{}, err }
 
 	rows, err := db.Query(`
 		SELECT ii.product_id, p.name, ii.system_count, ii.actual_count, ii.comment, p.article, p.storage_location,
@@ -228,9 +382,7 @@ func readInventoryDetails(db databaseReader, inventoryID int) (InventoryDetails,
 		WHERE ii.inventory_id = ?
 		ORDER BY p.name,ii.y,ii.x
 	`, inventoryID)
-	if err != nil {
-		return InventoryDetails{}, fmt.Errorf("get inventory items: %w", err)
-	}
+	if err != nil { return InventoryDetails{}, fmt.Errorf("get inventory items: %w", err) }
 	defer rows.Close()
 
 	details := InventoryDetails{
@@ -241,12 +393,8 @@ func readInventoryDetails(db databaseReader, inventoryID int) (InventoryDetails,
 	for rows.Next() {
 		var item InventoryItem
 		var actual sql.NullInt64
-
 		err := rows.Scan(&item.ProductID, &item.ProductName, &item.SystemCount, &actual, &item.Comment, &item.Article, &item.StorageLocation, &item.StockID, &item.X, &item.Y)
-		if err != nil {
-			return InventoryDetails{}, fmt.Errorf("scan inventory item: %w", err)
-		}
-
+		if err != nil { return InventoryDetails{}, fmt.Errorf("scan inventory item: %w", err) }
 		if actual.Valid {
 			value := int(actual.Int64)
 			diff := value - item.SystemCount
@@ -256,80 +404,9 @@ func readInventoryDetails(db databaseReader, inventoryID int) (InventoryDetails,
 		if item.StockID != 0 {
 			item.StorageLocation = warehouseLocation(item.X, item.Y)
 		}
-
 		details.Items = append(details.Items, item)
 	}
-
-	if err := rows.Err(); err != nil {
-		return InventoryDetails{}, fmt.Errorf("iterate inventory items: %w", err)
-	}
-
-	return details, nil
-}
-
-func (i *InventoryService) DeleteInventoryItem(inventoryID int, productID int) (InventoryDetails, error) {
-	var status string
-	err := i.db.QueryRow(`SELECT status FROM inventories WHERE id = ?`, inventoryID).Scan(&status)
-	if err != nil {
-		return InventoryDetails{}, err
-	}
-	if status != "draft" {
-		return InventoryDetails{}, errors.New("cannot modify completed inventory")
-	}
-
-	_, err = i.db.Exec(`DELETE FROM inventory_items WHERE inventory_id = ? AND product_id = ?`, inventoryID, productID)
-	if err != nil {
-		return InventoryDetails{}, fmt.Errorf("delete inventory item: %w", err)
-	}
-
-	return i.GetInventory(inventoryID)
-}
-
-func (i *InventoryService) SetActualCount(inventoryID int, productID int, actualCount int) error {
-	if actualCount < 0 {
-		return errors.New("actual count must be non-negative")
-	}
-	var count int
-	if err := i.db.QueryRow("SELECT count(*) FROM inventory_items WHERE inventory_id=? AND product_id=?", inventoryID, productID).Scan(&count); err != nil {
-		return err
-	}
-	if count > 1 {
-		return errors.New("товар находится в нескольких ячейках, сохраните количество для каждой позиции отдельно")
-	}
-
-	res, err := i.db.Exec(`
-		UPDATE inventory_items
-		SET actual_count = ?
-		WHERE inventory_id = ?
-		  AND product_id = ?
-		  AND EXISTS (
-			SELECT 1 FROM inventories
-			WHERE id = ? AND status = 'draft'
-		  )
-	`, actualCount, inventoryID, productID, inventoryID)
-	if err != nil {
-		return fmt.Errorf("set actual count: %w", err)
-	}
-
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("check affected rows: %w", err)
-	}
-	if affected == 0 {
-		return errors.New("inventory item not found or inventory is not draft")
-	}
-
-	return nil
-}
-
-type InventoryParameters struct {
-	ByCells        bool   `json:"byCells"`
-	StockIDs       []int  `json:"stockIds"`
-	Date           string `json:"date"`
-	ResponsibleIDs []int  `json:"responsibleIds"`
-	Commission     string `json:"commission"`
-	Kind           string `json:"kind"`
-	ProductIDs     []int  `json:"productIds"`
+	return details, rows.Err()
 }
 
 type InventoryCount struct {
@@ -339,54 +416,59 @@ type InventoryCount struct {
 	Comment     string `json:"comment"`
 }
 
-func (i *InventoryService) SaveInventoryCounts(id int, counts []InventoryCount) (InventoryDetails, error) {
+func (i *InventoryService) SaveInventoryCounts(id int, counts []InventoryCount, userID int, role string) (InventoryDetails, error) {
 	tx, err := i.db.Begin()
-	if err != nil {
+	if err != nil { return InventoryDetails{}, err }
+	defer tx.Rollback()
+
+	var status string
+	if err := tx.QueryRow("SELECT status FROM inventories WHERE id=?", id).Scan(&status); err != nil {
 		return InventoryDetails{}, err
 	}
-	defer tx.Rollback()
+
+	if (role == "Кладовщик" && status != "draft") || (role == "Менеджер" && status != "pending") {
+		return InventoryDetails{}, errors.New("у вас нет прав на редактирование этой инвентаризации в текущем статусе")
+	}
+
 	for _, item := range counts {
 		if item.ActualCount != nil && (*item.ActualCount < 0 || int64(*item.ActualCount) > maxSafeCount) {
 			return InventoryDetails{}, errors.New("фактическое количество должно быть целым числом от 0 до 9007199254740991")
 		}
 		result, err := tx.Exec(`UPDATE inventory_items SET actual_count=?,comment=? WHERE inventory_id=? AND product_id=?
-			AND ((stock_id IS NULL AND ?=0) OR stock_id=?)
-			AND EXISTS(SELECT 1 FROM inventories WHERE id=? AND status='draft')`, item.ActualCount, strings.TrimSpace(item.Comment), id, item.ProductID, item.StockID, item.StockID, id)
-		if err != nil {
-			return InventoryDetails{}, err
-		}
+			AND ((stock_id IS NULL AND ?=0) OR stock_id=?)`, item.ActualCount, strings.TrimSpace(item.Comment), id, item.ProductID, item.StockID, item.StockID)
+		if err != nil { return InventoryDetails{}, err }
 		changed, err := result.RowsAffected()
-		if err != nil {
-			return InventoryDetails{}, err
-		}
-		if changed == 0 {
-			return InventoryDetails{}, errors.New("позиция не найдена или инвентаризация завершена")
-		}
+		if err != nil { return InventoryDetails{}, err }
+		if changed == 0 { return InventoryDetails{}, errors.New("позиция не найдена") }
 	}
-	if err := tx.Commit(); err != nil {
-		return InventoryDetails{}, err
-	}
-	return i.GetInventory(id)
+	if err := tx.Commit(); err != nil { return InventoryDetails{}, err }
+	return i.GetInventory(id, userID)
 }
 
-func (i *InventoryService) PrepareInventory(id int, request InventoryParameters) (InventoryDetails, error) {
-	if _, err := parseOrderDate(request.Date); err != nil {
-		return InventoryDetails{}, err
+type InventoryParameters struct {
+	ByCells        bool   `json:"byCells"`
+	StockIDs       []int  `json:"stockIds"`
+	Date           string `json:"date"`
+	CommissionIDs  []int  `json:"commissionIds"` 
+	Kind           string `json:"kind"`
+	ProductIDs     []int  `json:"productIds"`
+}
+
+func (i *InventoryService) PrepareInventory(id int, request InventoryParameters, userID int) (InventoryDetails, error) {
+	if len(request.CommissionIDs) == 0 {
+		return InventoryDetails{}, errors.New("выберите хотя бы одного члена комиссии")
 	}
+	if _, err := parseOrderDate(request.Date); err != nil { return InventoryDetails{}, err }
 	if request.Kind != "partial" && request.Kind != "full" {
 		return InventoryDetails{}, errors.New("выберите тип инвентаризации")
 	}
-	if request.ByCells {
-		return i.prepareInventoryCells(id, request)
-	}
+	if request.ByCells { return i.prepareInventoryCells(id, request, userID) }
 	if request.Kind == "partial" && len(request.ProductIDs) == 0 {
 		return InventoryDetails{}, errors.New("выберите товары для проверки")
 	}
 
 	tx, err := i.db.Begin()
-	if err != nil {
-		return InventoryDetails{}, err
-	}
+	if err != nil { return InventoryDetails{}, err }
 	defer tx.Rollback()
 
 	var status string
@@ -397,103 +479,81 @@ func (i *InventoryService) PrepareInventory(id int, request InventoryParameters)
 	if status != "draft" {
 		return InventoryDetails{}, errors.New("инвентаризация уже завершена")
 	}
-
 	if byCells {
 		return InventoryDetails{}, errors.New("инвентаризация создана по ячейкам, передайте список позиций ячеек")
 	}
 
-	// 1. Сохраняем в память старые данные (факт и комментарий)
 	oldItems := make(map[int]struct {
 		Actual  sql.NullInt64
 		Comment string
 	})
 	rows, err := tx.Query("SELECT product_id, actual_count, comment FROM inventory_items WHERE inventory_id=?", id)
-	if err != nil {
-		return InventoryDetails{}, err
-	}
+	if err != nil { return InventoryDetails{}, err }
 	for rows.Next() {
 		var pid int
 		var act sql.NullInt64
 		var com string
 		if err := rows.Scan(&pid, &act, &com); err == nil {
-			oldItems[pid] = struct {
-				Actual  sql.NullInt64
-				Comment string
-			}{act, com}
+			oldItems[pid] = struct { Actual sql.NullInt64; Comment string }{act, com}
 		}
 	}
 	rows.Close()
 
-	// 2. Удаляем старый список
 	if _, err := tx.Exec("DELETE FROM inventory_items WHERE inventory_id=?", id); err != nil {
 		return InventoryDetails{}, err
 	}
 
-	// 3. Вставляем новый список, перенося старые данные, если товар остался
 	if request.Kind == "full" {
 		prodRows, err := tx.Query("SELECT id, count FROM products")
-		if err != nil {
-			return InventoryDetails{}, err
-		}
+		if err != nil { return InventoryDetails{}, err }
+		type prodData struct{ id, count int }
+		var prods []prodData
 		for prodRows.Next() {
-			var pid, sysCount int
-			prodRows.Scan(&pid, &sysCount)
+			var p prodData
+			prodRows.Scan(&p.id, &p.count)
+			prods = append(prods, p)
+		}
+		prodRows.Close() 
 
+		for _, p := range prods {
 			var act interface{} = nil
 			var com string = ""
-			if old, exists := oldItems[pid]; exists {
-				if old.Actual.Valid {
-					act = old.Actual.Int64
-				}
+			if old, exists := oldItems[p.id]; exists {
+				if old.Actual.Valid { act = old.Actual.Int64 }
 				com = old.Comment
 			}
-			tx.Exec("INSERT INTO inventory_items(inventory_id, product_id, system_count, actual_count, comment) VALUES(?,?,?,?,?)", id, pid, sysCount, act, com)
+			_, err = tx.Exec("INSERT INTO inventory_items(inventory_id, product_id, system_count, actual_count, comment) VALUES(?,?,?,?,?)", id, p.id, p.count, act, com)
+			if err != nil { return InventoryDetails{}, err }
 		}
-		prodRows.Close()
 	} else {
 		for _, pid := range request.ProductIDs {
 			var sysCount int
 			err := tx.QueryRow("SELECT count FROM products WHERE id=?", pid).Scan(&sysCount)
-			if err != nil {
-				return InventoryDetails{}, fmt.Errorf("товар %d не найден", pid)
-			}
-
+			if err != nil { return InventoryDetails{}, fmt.Errorf("товар %d не найден", pid) }
 			var act interface{} = nil
 			var com string = ""
 			if old, exists := oldItems[pid]; exists {
-				if old.Actual.Valid {
-					act = old.Actual.Int64
-				}
+				if old.Actual.Valid { act = old.Actual.Int64 }
 				com = old.Comment
 			}
-
-			_, err = tx.Exec("INSERT INTO inventory_items(inventory_id, product_id, system_count, actual_count, comment) VALUES(?,?,?,?,?)", id, pid, sysCount, act, com)
-			if err != nil {
+			if _, err := tx.Exec("INSERT INTO inventory_items(inventory_id, product_id, system_count, actual_count, comment) VALUES(?,?,?,?,?)", id, pid, sysCount, act, com); err != nil {
 				return InventoryDetails{}, err
 			}
 		}
 	}
 
-	if err := saveInventoryParameters(tx, id, request); err != nil {
-		return InventoryDetails{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return InventoryDetails{}, err
-	}
-	return i.GetInventory(id)
+	if err := saveInventoryParameters(tx, id, request); err != nil { return InventoryDetails{}, err }
+	if err := tx.Commit(); err != nil { return InventoryDetails{}, err }
+	return i.GetInventory(id, userID)
 }
 
 func saveInventoryParameters(tx *sql.Tx, id int, request InventoryParameters) error {
-	managers, err := resolveManagers(tx, request.ResponsibleIDs)
-	if err != nil {
-		return err
-	}
+	managers, err := resolveManagers(tx, request.CommissionIDs)
+	if err != nil { return err }
 	document, err := json.Marshal(managers)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(`UPDATE inventories SET inventory_date=?,responsible_managers=?,commission=?,kind=?,by_cells=? WHERE id=?`,
-		request.Date, string(document), strings.TrimSpace(request.Commission), request.Kind, request.ByCells, id)
+	if err != nil { return err }
+	_, err = tx.Exec(`UPDATE inventories SET inventory_date=?,commission_managers=?,commission=?,kind=?,by_cells=? WHERE id=?`,
+		request.Date, string(document), managerNames(managers), request.Kind, request.ByCells, id)
 	return err
 }
 
@@ -501,132 +561,12 @@ func (i *InventoryService) GetInventoryEmployees() ([]Employee, error) {
 	return getManagers(i.db)
 }
 
-func (i *InventoryService) ApplyInventory(inventoryID int) error {
-	tx, err := i.db.Begin()
-	if err != nil {
-		return fmt.Errorf("begin apply inventory: %w", err)
-	}
-	defer tx.Rollback()
-
-	var status string
-	var byCells bool
-	err = tx.QueryRow(`SELECT status,by_cells FROM inventories WHERE id = ?`, inventoryID).Scan(&status, &byCells)
-	if errors.Is(err, sql.ErrNoRows) {
-		return errors.New("inventory not found")
-	}
-	if err != nil {
-		return fmt.Errorf("get inventory status: %w", err)
-	}
-	if status != "draft" {
-		return errors.New("inventory is not draft")
-	}
-
-	var itemCount int
-	err = tx.QueryRow(`SELECT COUNT(id) FROM inventory_items WHERE inventory_id = ?`, inventoryID).Scan(&itemCount)
-	if err != nil {
-		return fmt.Errorf("count inventory items: %w", err)
-	}
-	if itemCount == 0 {
-		return errors.New("inventory has no items")
-	}
-
-	var missingCount int
-	err = tx.QueryRow(`
-		SELECT COUNT(id)
-		FROM inventory_items
-		WHERE inventory_id = ? AND actual_count IS NULL
-	`, inventoryID).Scan(&missingCount)
-	if err != nil {
-		return fmt.Errorf("count items without actual count: %w", err)
-	}
-	if missingCount > 0 {
-		return errors.New("some inventory items have no actual count")
-	}
-
-	if byCells {
-		if err := applyInventoryCells(tx, inventoryID); err != nil {
-			return err
-		}
-	} else {
-		if err := applyLegacyInventoryStock(tx, inventoryID); err != nil {
-			return err
-		}
-		_, err = tx.Exec(`
-		UPDATE products
-		SET count = (
-			SELECT ii.actual_count
-			FROM inventory_items ii
-			WHERE ii.inventory_id = ?
-			  AND ii.product_id = products.id
-		)
-		WHERE id IN (
-			SELECT product_id
-			FROM inventory_items
-			WHERE inventory_id = ?
-		)
-	`, inventoryID, inventoryID)
-		if err != nil {
-			return fmt.Errorf("update product counts: %w", err)
-		}
-
-	}
-
-	_, err = tx.Exec(`
-		UPDATE inventories
-		SET status = 'completed',
-		    completed_at = datetime('now')
-		WHERE id = ? AND status = 'draft'
-	`, inventoryID)
-	if err != nil {
-		return fmt.Errorf("complete inventory: %w", err)
-	}
-	if _, err := saveInventoryReport(tx, inventoryID); err != nil {
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit apply inventory: %w", err)
-	}
-
-	return nil
-}
-
-func (i *InventoryService) GetDraftInventory() (*InventoryDetails, error) {
+func (i *InventoryService) GetDraftInventory(userID int) (*InventoryDetails, error) {
 	var id int
-	err := i.db.QueryRow(`
-		SELECT id FROM inventories
-		WHERE status = 'draft'
-		ORDER BY id DESC
-		LIMIT 1
-	`).Scan(&id)
-
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("get draft inventory: %w", err)
-	}
-
-	details, err := i.GetInventory(id)
-	if err != nil {
-		return nil, err
-	}
+	err := i.db.QueryRow(`SELECT id FROM inventories WHERE status = 'draft' ORDER BY id DESC LIMIT 1`).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) { return nil, nil }
+	if err != nil { return nil, fmt.Errorf("get draft inventory: %w", err) }
+	details, err := i.GetInventory(id, userID)
+	if err != nil { return nil, err }
 	return &details, nil
-}
-
-func (i *InventoryService) GetInventories() ([]Inventory, error) {
-	rows, err := i.db.Query("SELECT " + inventoryColumns + " FROM inventories ORDER BY id DESC")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	inventories := []Inventory{}
-	for rows.Next() {
-		inventory, err := scanInventory(rows)
-		if err != nil {
-			return nil, err
-		}
-		inventories = append(inventories, inventory)
-	}
-	return inventories, rows.Err()
 }
