@@ -1,3 +1,4 @@
+import bootstrap from 'bootstrap/dist/js/bootstrap.bundle.min.js';
 import { callBackend } from '../../shared/api.js';
 import { byId, showError, showStatus } from '../../shared/dom.js';
 import { cellName, createWarehouseGrid } from '../../shared/warehouse-grid.js';
@@ -13,6 +14,7 @@ let movementMoveAll = false;
 let movementDestination = null;
 let movementHighlightedProduct = null;
 let movementShowItems = false;
+let movementDestShowItems = false;
 let movementVersion = 0;
 
 const cellItems = (cell) => cell ? movementStocks.filter((item) => item.x === cell.x && item.y === cell.y) : [];
@@ -39,13 +41,15 @@ function paragraph(text, cls = 'small text-body-secondary') {
 function setMode(next) {
     movementMode = next;
     if (next !== 'browse') movementShowItems = false;
+    movementDestShowItems = false;
     byId('movements-cancel').hidden = next === 'browse';
     render();
 }
 function clearProductFilter() {
     movementHighlightedProduct = null;
-    byId('movements-product').value = '';
-    byId('movements-find').disabled = true;
+    byId('movements-product-search').value = '';
+    setProductChoice(null);
+    renderProductOptions();
     byId('movements-back').hidden = true;
 }
 function renderGrid() {
@@ -61,6 +65,64 @@ function renderGrid() {
     const highlightVariant = movementMode === 'merge-select' || movementMode === 'merge-target' ? 'info' : 'success';
     movementGrid.render(movementStocks, movementSelected, disabled, marked, highlightVariant,
         movementDestination, movementMode === 'merge-select');
+}
+function createItemLink(item) {
+    const link = document.createElement('a');
+    link.href = `#product/${item.productId}`;
+    link.className = 'list-group-item list-group-item-action px-2 py-2';
+    const name = document.createElement('strong');
+    name.className = 'd-block';
+    name.textContent = item.name;
+    const count = document.createElement('span');
+    count.className = 'd-block mt-1';
+    count.textContent = `${item.count.toLocaleString('ru-RU')} шт.`;
+    const date = document.createElement('span');
+    date.className = 'small text-body-secondary';
+    date.textContent = item.receivedAt ? `Поступление: ${new Date(item.receivedAt).toLocaleString('ru-RU')}` : 'Дата поступления не указана';
+    link.append(name, count, date);
+    return link;
+}
+
+// Список содержимого ячейки: одна позиция + «Ко всем товарам» либо полный список.
+// Используется и для выбранной ячейки, и для ячейки назначения.
+function renderCellItems(list, items, expanded, setExpanded) {
+    list.classList.remove('movements-items-popover');
+    if (items.length > 1 && expanded) {
+        list.classList.add('movements-items-popover');
+        const header = document.createElement('div');
+        header.className = 'd-flex align-items-center justify-content-between gap-2 px-2 py-2 border-bottom mb-1';
+        const heading = document.createElement('strong');
+        heading.className = 'small';
+        heading.textContent = `Все товары в ячейке · ${items.length}`;
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'btn-close';
+        close.setAttribute('aria-label', 'Закрыть список товаров');
+        close.addEventListener('click', () => setExpanded(false));
+        header.append(heading, close);
+        list.replaceChildren(header, ...items.map(createItemLink));
+        return;
+    }
+
+    if (items.length > 0) {
+        const firstItem = createItemLink(items[0]);
+        list.replaceChildren(firstItem);
+        if (items.length > 1) {
+            const showAll = document.createElement('a');
+            showAll.href = '#all-items';
+            showAll.className = 'd-inline-flex align-items-center gap-1 small fw-semibold text-success px-2 py-2 movements-show-all-link';
+            showAll.textContent = 'Ко всем товарам';
+            showAll.setAttribute('aria-label', `Ко всем товарам в ячейке, ${items.length} позиций`);
+            showAll.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setExpanded(true);
+            });
+            list.append(showAll);
+        }
+    } else {
+        list.replaceChildren();
+    }
 }
 function renderDetails() {
     const card = byId('movements-details-card');
@@ -91,60 +153,21 @@ function renderDetails() {
     empty.hidden = items.length > 0;
     empty.textContent = movementSelected ? 'Ячейка свободна.' : 'Выберите ячейку на карте.';
 
-    const createItemLink = (item) => {
-        const link = document.createElement('a');
-        link.href = `#product/${item.productId}`;
-        link.className = 'list-group-item list-group-item-action px-2 py-2';
-        const name = document.createElement('strong');
-        name.className = 'd-block';
-        name.textContent = item.name;
-        const count = document.createElement('span');
-        count.className = 'd-block mt-1';
-        count.textContent = `${item.count.toLocaleString('ru-RU')} шт.`;
-        const date = document.createElement('span');
-        date.className = 'small text-body-secondary';
-        date.textContent = item.receivedAt ? `Поступление: ${new Date(item.receivedAt).toLocaleString('ru-RU')}` : 'Дата поступления не указана';
-        link.append(name, count, date);
-        return link;
-    };
-
-    if (items.length > 1 && movementShowItems) {
-        list.classList.add('movements-items-popover');
-        const header = document.createElement('div');
-        header.className = 'd-flex align-items-center justify-content-between gap-2 px-2 py-2 border-bottom mb-1';
-        const heading = document.createElement('strong');
-        heading.className = 'small';
-        heading.textContent = `Все товары в ячейке · ${items.length}`;
-        const close = document.createElement('button');
-        close.type = 'button';
-        close.className = 'btn-close';
-        close.setAttribute('aria-label', 'Закрыть список товаров');
-        close.addEventListener('click', () => { movementShowItems = false; render(); });
-        header.append(heading, close);
-        list.replaceChildren(header, ...items.map(createItemLink));
-        return;
-    }
-
-    if (items.length > 0) {
-        const firstItem = createItemLink(items[0]);
-        list.replaceChildren(firstItem);
-        if (items.length > 1) {
-            const showAll = document.createElement('a');
-            showAll.href = '#all-items';
-            showAll.className = 'd-inline-flex align-items-center gap-1 small fw-semibold text-success px-2 py-2 movements-show-all-link';
-            showAll.textContent = 'Ко всем товарам';
-            showAll.setAttribute('aria-label', `Ко всем товарам в ячейке, ${items.length} позиций`);
-            showAll.addEventListener('click', (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                movementShowItems = true;
-                render();
-            });
-            list.append(showAll);
-        }
-    } else {
-        list.replaceChildren();
-    }
+    renderCellItems(list, items, movementShowItems, (value) => { movementShowItems = value; render(); });
+}
+function renderDestination() {
+    const card = byId('movements-destination-card');
+    const list = byId('movements-destination-items');
+    const active = movementMode === 'move-target' || movementMode === 'merge-target';
+    card.hidden = !active;
+    list.classList.remove('movements-items-popover');
+    if (!active) { movementDestShowItems = false; list.replaceChildren(); return; }
+    const empty = byId('movements-destination-empty');
+    byId('movements-destination-title').textContent = movementDestination ? `Ячейка назначения ${cellName(movementDestination.x, movementDestination.y)}` : 'Ячейка назначения';
+    const items = cellItems(movementDestination);
+    empty.hidden = items.length > 0;
+    empty.textContent = movementDestination ? 'Ячейка свободна.' : 'Ячейка назначения не выбрана.';
+    renderCellItems(list, items, movementDestShowItems, (value) => { movementDestShowItems = value; render(); });
 }
 function renderActions() {
     const root = byId('movements-actions'); root.replaceChildren();
@@ -243,7 +266,7 @@ function renderActions() {
         }
     }
 }
-function render() { renderGrid(); renderDetails(); renderActions(); }
+function render() { renderGrid(); renderDestination(); renderDetails(); renderActions(); }
 function onCell(cell) {
     showStatus(byId('movements-status'), '');
     if (movementMode === 'browse') {
@@ -254,7 +277,7 @@ function onCell(cell) {
         return;
     }
     if (movementMode === 'move-choose') return;
-    if (movementMode === 'move-target') { movementDestination = cell; render(); return; }
+    if (movementMode === 'move-target') { movementDestination = cell; movementDestShowItems = false; render(); return; }
     if (movementMode === 'merge-select') {
         if (sameCell(cell, movementSelected)) return;
         const index = movementMergeSources.findIndex((c) => sameCell(c, cell));
@@ -262,11 +285,11 @@ function onCell(cell) {
         if (!cellItems(cell).length) return setMovementStatus('Для объединения можно выбрать только непустые ячейки.', 'warning');
         movementMergeSources.push({ x: cell.x, y: cell.y }); render(); return;
     }
-    if (movementMode === 'merge-target') { movementDestination = cell; render(); }
+    if (movementMode === 'merge-target') { movementDestination = cell; movementDestShowItems = false; render(); }
 }
 function resetOperation() {
     movementMode = 'browse'; movementStock = null; movementQuantity = 0; movementMoveAll = false;
-    movementMergeSources = []; movementDestination = null; movementSelected = null; movementShowItems = false;
+    movementMergeSources = []; movementDestination = null; movementSelected = null; movementShowItems = false; movementDestShowItems = false;
     clearProductFilter();
     byId('movements-cancel').hidden = true;
     render();
@@ -299,16 +322,34 @@ async function confirmMerge() {
         setMovementStatus('Ячейки успешно объединены.', 'success');
     } catch (error) { showError(byId('movements-status'), error); }
 }
+function setProductChoice(id, name = '') {
+    const picker = byId('movements-product');
+    picker.value = id ? String(id) : '';
+    picker.textContent = id ? name : 'Выберите товар';
+    byId('movements-find').disabled = movementMode !== 'browse' || !byId('movements-product').value;
+}
+// Список товаров в выпадающем меню фильтруется сразу при вводе; пустой запрос возвращает все товары.
+function renderProductOptions() {
+    const query = byId('movements-product-search').value.trim().toLocaleLowerCase('ru');
+    const chosen = byId('movements-product').value;
+    const options = uniqueProducts()
+        .filter((item) => !query || item.name.toLocaleLowerCase('ru').includes(query))
+        .map((item) => {
+            const option = document.createElement('button');
+            option.type = 'button'; option.dataset.productId = item.productId;
+            option.className = `dropdown-item text-wrap py-2${String(item.productId) === chosen ? ' active' : ''}`;
+            option.setAttribute('role', 'option');
+            option.setAttribute('aria-selected', String(String(item.productId) === chosen));
+            option.textContent = item.name;
+            return option;
+        });
+    byId('movements-product-options').replaceChildren(...options);
+    byId('movements-product-empty').hidden = options.length > 0;
+}
 function fillProductSelect() {
-    const select = byId('movements-product');
-    const placeholder = document.createElement('option');
-    placeholder.value = ''; placeholder.textContent = 'Выберите товар'; placeholder.disabled = true; placeholder.selected = true; placeholder.hidden = true;
-    const options = uniqueProducts().map((item) => {
-        const option = document.createElement('option'); option.value = item.productId; option.textContent = item.name; return option;
-    });
-    select.replaceChildren(placeholder, ...options);
-    select.value = '';
-    byId('movements-find').disabled = true;
+    byId('movements-product-search').value = '';
+    setProductChoice(null);
+    renderProductOptions();
 }
 export async function loadMovements() {
     const request = ++movementVersion;
@@ -332,8 +373,21 @@ export function initMovements() {
     byId('movements-cancel').addEventListener('click', () => {
         resetOperation(); setMovementStatus('Операция отменена. Склад не изменён.', 'info');
     });
-    byId('movements-product').addEventListener('change', () => {
-        byId('movements-find').disabled = movementMode !== 'browse' || !byId('movements-product').value;
+    const productPicker = byId('movements-product-picker');
+    const productSearch = byId('movements-product-search');
+    productPicker.addEventListener('shown.bs.dropdown', () => productSearch.focus());
+    productPicker.addEventListener('hidden.bs.dropdown', () => { productSearch.value = ''; renderProductOptions(); });
+    productSearch.addEventListener('input', renderProductOptions);
+    productSearch.addEventListener('keydown', (event) => {
+        const first = byId('movements-product-options').querySelector('button');
+        if (event.key === 'ArrowDown' && first) { event.preventDefault(); first.focus(); }
+        if (event.key === 'Enter') { event.preventDefault(); first?.click(); }
+    });
+    byId('movements-product-options').addEventListener('click', (event) => {
+        const option = event.target.closest('button[data-product-id]');
+        if (!option || movementMode !== 'browse') return;
+        setProductChoice(option.dataset.productId, option.textContent);
+        bootstrap.Dropdown.getOrCreateInstance(byId('movements-product')).hide();
     });
     byId('movements-find').addEventListener('click', () => {
         if (movementMode !== 'browse') return;
@@ -348,6 +402,7 @@ export function initMovements() {
         clearProductFilter(); render(); setMovementStatus('Фильтр сброшен.', 'info');
     });
     byId('movements-page').addEventListener('click', (event) => {
+        if (movementDestShowItems && !event.target.closest('#movements-destination-items')) { movementDestShowItems = false; render(); }
         if (movementMode !== 'browse' || !movementShowItems) return;
         // Клик по самой карточке списка не закрывает её; клик по карте или
         // любому свободному месту закрывает только список, не снимая выбор ячейки.

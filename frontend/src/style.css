@@ -12,17 +12,32 @@
 #movements-grid { width: 100%; overflow: visible; }
 #movements-grid table { width: 100%; table-layout: fixed; }
 #movements-grid th, #movements-grid td { padding: .2rem !important; font-size: .8rem; }
+/* На широких экранах страница «Перемещения» не прокручивается целиком: размер ячеек прежний,
+   а карта склада прокручивается внутри своей карточки (бегунок справа). */
+@media (min-width: 1200px) {
+    /* Строка статуса занимает место всегда, чтобы страница не вырастала при появлении сообщения. */
+    #movements-status { min-height: 1.5rem; }
+    #movements-page .col-xl-8 > .card { max-height: max(20rem, calc(100vh - 14.5rem)); }
+    #movements-page .col-xl-8 > .card > .card-body { overflow-y: auto; min-height: 0; }
+}
 #movements-grid .ratio { min-width: 0; }
 #movements-grid button { min-width: 0; font-size: clamp(.65rem, 1.2vw, .85rem); }
 #movements-grid button .small { font-size: clamp(.55rem, 1vw, .72rem); }
-#movements-details-card.movements-operation-card { margin-top: 9rem; }
-@media (max-width: 1199.98px) { #movements-details-card.movements-operation-card { margin-top: 0; } }
+/* Карточка ячейки назначения занимает фиксированное место над панелью операции (раньше там был отступ 9rem),
+   поэтому нижняя панель «Подтвердить перемещение» не смещается при выборе другой ячейки. */
+#movements-destination-card { margin-bottom: 1rem; }
+@media (min-width: 1200px) { #movements-destination-card { height: 11rem; } }
+#movements-destination-items:not(.movements-items-popover) > a > strong {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 
 /* При нескольких позициях показываем содержимое ячейки поверх панели действий,
    чтобы высота списка не сдвигала кнопки перемещения и объединения. */
-#movements-details-card .card-body { position: relative; }
-#movements-cell-items.movements-items-popover {
+#movements-details-card .card-body,
+#movements-destination-card .card-body { position: relative; }
+#movements-cell-items.movements-items-popover,
+#movements-destination-items.movements-items-popover {
     position: absolute;
     top: .5rem;
     left: .75rem;
@@ -36,17 +51,21 @@
     background: var(--bs-body-bg);
     box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .16);
 }
-#movements-cell-items.movements-items-popover .list-group-item {
+#movements-cell-items.movements-items-popover .list-group-item,
+#movements-destination-items.movements-items-popover .list-group-item {
     border-left: 0;
     border-right: 0;
 }
 
 /* Ссылка на полный список не влияет на вертикальное положение панели операций. */
-#movements-cell-items .movements-show-all-link {
+#movements-cell-items .movements-show-all-link,
+#movements-destination-items .movements-show-all-link {
     text-decoration: none;
     cursor: pointer;
 }
 #movements-cell-items .movements-show-all-link:hover,
-#movements-cell-items .movements-show-all-link:focus-visible {
+#movements-cell-items .movements-show-all-link:focus-visible,
+#movements-destination-items .movements-show-all-link:hover,
+#movements-destination-items .movements-show-all-link:focus-visible {
     text-decoration: underline;
 }

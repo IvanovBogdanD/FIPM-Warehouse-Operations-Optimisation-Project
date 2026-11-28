@@ -11,7 +11,14 @@
           <h2 class="card-title fw-semibold mb-0">Ячейки склада 8×8</h2>
           <div class="d-flex flex-wrap align-items-center gap-2">
             <label class="small text-body-secondary" for="movements-product">Найти товар</label>
-            <select id="movements-product" class="form-select form-select-sm" style="min-width:190px;max-width:260px"><option value="" disabled selected hidden>Выберите товар</option></select>
+            <div id="movements-product-picker" class="dropdown">
+              <button id="movements-product" class="form-select form-select-sm text-start text-truncate" type="button" value="" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-haspopup="listbox" aria-expanded="false" style="width:260px;max-width:100%">Выберите товар</button>
+              <div class="dropdown-menu p-2" style="width:min(22rem,90vw)">
+                <input id="movements-product-search" type="search" class="form-control form-control-sm mb-2" placeholder="Начните вводить название" autocomplete="off" aria-label="Поиск товара" aria-controls="movements-product-options">
+                <div id="movements-product-options" class="overflow-auto" role="listbox" aria-label="Товары" style="max-height:16rem"></div>
+                <p id="movements-product-empty" class="small text-body-secondary px-2 py-1 mb-0" role="status" hidden>Товары не найдены.</p>
+              </div>
+            </div>
             <button id="movements-find" class="btn btn-sm btn-success" type="button" disabled>Найти товар</button>
             <button id="movements-back" class="btn btn-sm btn-outline-secondary" type="button" hidden>Сбросить фильтр</button>
           </div>
@@ -20,6 +27,13 @@
       </section>
     </div>
     <div class="col-xl-4">
+      <section id="movements-destination-card" class="card shadow-none border" aria-label="Ячейка назначения" hidden>
+        <div class="card-header bg-body py-2"><h2 id="movements-destination-title" class="card-title fw-semibold mb-0">Ячейка назначения</h2></div>
+        <div class="card-body py-2">
+          <p id="movements-destination-empty" class="text-body-secondary mb-0">Ячейка назначения не выбрана.</p>
+          <div id="movements-destination-items" class="list-group list-group-flush"></div>
+        </div>
+      </section>
       <section id="movements-details-card" class="card shadow-none border">
         <div class="card-header bg-body"><h2 id="movements-cell-title" class="card-title fw-semibold mb-0">Содержимое ячейки</h2></div>
         <div class="card-body">

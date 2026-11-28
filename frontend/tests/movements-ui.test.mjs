@@ -15,7 +15,7 @@ test('Карта перемещений использует компактну�
 });
 
 test('Фильтр начинается с placeholder, кнопка поиска доступна только в режиме просмотра после выбора товара', () => {
-    assert.match(html, /id="movements-product"[^>]*>[\s\S]*?disabled selected hidden>Выберите товар/);
+    assert.match(html, /id="movements-product"[^>]*data-bs-toggle="dropdown"[^>]*>Выберите товар</);
     assert.match(html, /id="movements-find"[^>]*disabled/);
     assert.match(js, /movementMode !== 'browse' \|\| !byId\('movements-product'\)\.value/);
     assert.match(js, /if \(movementMode !== 'browse'\) return;/);
@@ -53,7 +53,7 @@ test('Источник подсвечивается жёлтым, дополни
     assert.match(js, /movementDestination, movementMode === 'merge-select'/);
     assert.match(js, /'text-success fw-semibold mb-1'/);
     assert.match(js, /'text-danger fw-bold mb-2'/);
-    assert.match(css, /movements-operation-card \{ margin-top: 9rem; \}/);
+    assert.match(css, /#movements-destination-card \{ height: 11rem; \}/);
 });
 
 test('Кнопка отмены красная и показывается только в режиме операции', () => {
@@ -88,12 +88,13 @@ test('Повторный клик по выбранной ячейке сним�
 test('При нескольких товарах по умолчанию показана одна позиция и ссылка ко всем товарам', () => {
     assert.ok(js.includes('const firstItem = createItemLink(items[0])'));
     assert.ok(js.includes("showAll.textContent = 'Ко всем товарам'"));
-    assert.ok(js.includes('movementShowItems = true;'));
+    assert.ok(js.includes('setExpanded(true);'));
+    assert.ok(js.includes('movementShowItems = value; render();'));
     assert.ok(js.includes('Все товары в ячейке'));
 });
 
 test('Открытый список закрывается крестиком или кликом вне списка без снятия выбора ячейки', () => {
-    assert.ok(js.includes("close.addEventListener('click', () => { movementShowItems = false; render(); })"));
+    assert.ok(js.includes("close.addEventListener('click', () => setExpanded(false))"));
     assert.ok(js.includes("event.target.closest('#movements-cell-items')"));
     assert.ok(js.includes('movementShowItems = false;\n        render();'));
     assert.match(css, /movements-show-all-link/);
@@ -116,4 +117,44 @@ test('Перемещение "всего содержимого ячейки" п
     assert.match(js, /for \(const item of cellItems\(movementSelected\)\) \{\s*\n\s*await callBackend\('MoveWarehouseStock', item\.id, item\.count, movementDestination\.x, movementDestination\.y\);/);
     assert.match(js, /quantity\.hidden = false; all\.hidden = false;/);
     assert.match(js, /movementMoveAll = false; movementStock = item; movementQuantity = amount; movementDestination = null; setMode\('move-target'\);/);
+});
+
+test('Поиск товара: поле ввода находится внутри выпадающего списка, отдельного поля поиска нет', () => {
+    assert.match(html, /id="movements-product-picker" class="dropdown"/);
+    assert.match(html, /<div class="dropdown-menu[^"]*"[^>]*>\s*<input id="movements-product-search"/);
+    assert.doesNotMatch(html, /<select id="movements-product"/);
+    assert.doesNotMatch(html, /<label[^>]*>Найти товар<\/label>\s*<input/);
+});
+
+test('Поиск товара: фильтрация идёт при вводе, пустой запрос возвращает все товары', () => {
+    assert.match(js, /productSearch\.addEventListener\('input', renderProductOptions\)/);
+    assert.match(js, /\.filter\(\(item\) => !query \|\| item\.name\.toLocaleLowerCase\('ru'\)\.includes\(query\)\)/);
+    assert.match(js, /'hidden\.bs\.dropdown'/);
+    assert.match(js, /'shown\.bs\.dropdown', \(\) => productSearch\.focus\(\)/);
+    assert.match(js, /function setProductChoice\(id, name = ''\)/);
+});
+
+test('Ячейка назначения: над панелью операции показывается её содержимое тем же способом, что и при обычном просмотре', () => {
+    assert.match(html, /id="movements-destination-card"[^>]*hidden/);
+    assert.match(html, /id="movements-destination-items"/);
+    assert.match(html, /Ячейка назначения не выбрана\./);
+    assert.ok(js.includes('function renderDestination()'));
+    assert.ok(js.includes("const active = movementMode === 'move-target' || movementMode === 'merge-target';"));
+    assert.ok(js.includes('renderCellItems(list, items, movementDestShowItems'));
+    assert.ok(js.includes('renderCellItems(list, items, movementShowItems'));
+    assert.ok(js.includes("function render() { renderGrid(); renderDestination(); renderDetails(); renderActions(); }"));
+    assert.ok(js.includes("event.target.closest('#movements-destination-items')"));
+    assert.match(css, /#movements-destination-items\.movements-items-popover/);
+});
+
+test('Нижняя панель операции закреплена: карточка назначения имеет фиксированную высоту, отступ-заглушка убран', () => {
+    assert.match(css, /@media \(min-width: 1200px\) \{ #movements-destination-card \{ height: 11rem; \} \}/);
+    assert.doesNotMatch(css, /movements-operation-card \{ margin-top/);
+});
+
+test('Карта склада прокручивается внутри своей карточки, размер ячеек прежний', () => {
+    assert.match(css, /#movements-page \.col-xl-8 > \.card \{ max-height: max\(20rem, calc\(100vh - 14\.5rem\)\); \}/);
+    assert.match(css, /#movements-page \.col-xl-8 > \.card > \.card-body \{ overflow-y: auto; min-height: 0; \}/);
+    assert.match(css, /#movements-status \{ min-height: 1\.5rem; \}/);
+    assert.doesNotMatch(css, /#movements-grid table \{ max-width/);
 });
